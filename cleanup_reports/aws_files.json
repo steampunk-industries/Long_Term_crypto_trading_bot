@@ -1,0 +1,19 @@
+[
+  "./deploy-to-aws.sh",
+  "./docker-compose.aws.yml",
+  "./setup_aws_venv.py",
+  "./aws-cloudformation-enhanced.yml.bak",
+  "./aws-cloudformation-enhanced.fixed.yml",
+  "./setup-aws-deployment.sh",
+  "./aws-cloudformation-simplified.yml",
+  "./aws-cloudformation-enhanced.yml",
+  "./setup_aws_permissions.sh",
+  "./aws-cloudformation.yml",
+  "./fix_cloudformation.py",
+  "./AWS_SETUP_README.md",
+  "./AWS_DEPLOYMENT_TROUBLESHOOTING.md",
+  "./aws-cloudformation-enhanced.yml.bak2",
+  "./AWS_DEPLOYMENT_SUMMARY.md",
+  "./deploy_enhanced_aws.sh",
+  "./AWS_DEPLOYMENT_GUIDE.md"
+]

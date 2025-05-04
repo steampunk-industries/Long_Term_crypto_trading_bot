@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Trades</h1>
+
+<!-- Trade Stats -->
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Total Trades</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ trade_stats.total }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-arrow-up me-2"></i>Buy Trades</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ trade_stats.buys }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-arrow-down me-2"></i>Sell Trades</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ trade_stats.sells }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-dollar-sign me-2"></i>Total Volume</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">${{ "%.2f"|format(trade_stats.volume) }}</h2>
+                <p class="mb-0">Fees: ${{ "%.2f"|format(trade_stats.fees) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Trade Table -->
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="fas fa-table me-2"></i>All Trades</h5>
+    </div>
+    <div class="card-body">
+        {% if trades %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Symbol</th>
+                        <th>Exchange</th>
+                        <th>Side</th>
+                        <th>Type</th>
+                        <th>Price</th>
+                        <th>Amount</th>
+                        <th>Total</th>
+                        <th>Fee</th>
+                        <th>Strategy</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trade in trades %}
+                    <tr>
+                        <td>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ trade.symbol }}</td>
+                        <td>{{ trade.exchange }}</td>
+                        <td class="{% if trade.side == 'buy' %}text-success{% else %}text-danger{% endif %}">
+                            {{ trade.side.upper() }}
+                        </td>
+                        <td>{{ trade.type.upper() }}</td>
+                        <td>${{ "%.2f"|format(trade.price) }}</td>
+                        <td>{{ "%.8f"|format(trade.amount) }}</td>
+                        <td>${{ "%.2f"|format(trade.cost) }}</td>
+                        <td>${{ "%.2f"|format(trade.fee) }}</td>
+                        <td>{{ trade.strategy or 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>No trades have been executed yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

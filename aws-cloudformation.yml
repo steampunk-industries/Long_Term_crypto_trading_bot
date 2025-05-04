@@ -1,0 +1,308 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Crypto Trading Bot with GPU support'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (e.g., dev, staging, prod)
+    Type: String
+    Default: dev
+    
+  InstanceType:
+    Description: EC2 instance type with GPU support
+    Type: String
+    Default: g4dn.xlarge
+    AllowedValues:
+      - g4dn.xlarge
+      - g4dn.2xlarge
+      - g4dn.4xlarge
+      - p3.2xlarge
+    
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
+    
+  VpcId:
+    Description: VPC ID where resources will be deployed
+    Type: AWS::EC2::VPC::Id
+    
+  SubnetId:
+    Description: Subnet ID where EC2 instance will be deployed
+    Type: AWS::EC2::Subnet::Id
+    
+  DBInstanceClass:
+    Description: Database instance class
+    Type: String
+    Default: db.t3.medium
+    
+  DBName:
+    Description: Database name
+    Type: String
+    Default: crypto_bot
+    
+  DBUsername:
+    Description: Database admin username
+    Type: String
+    Default: postgres
+    
+  DBPassword:
+    Description: Database admin password
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    
+  DockerImageRepo:
+    Description: ECR repository for Docker images
+    Type: String
+    Default: crypto-trading-bot
+
+Resources:
+  # IAM Role for EC2 Instance
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonECR-FullAccess
+      Policies:
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: arn:aws:logs:*:*:*
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # Security Group for EC2 Instance
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Crypto Trading Bot EC2 instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+          Description: Dashboard access
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+          Description: Grafana access
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: 0.0.0.0/0
+          Description: Prometheus access
+
+  # Security Group for RDS Instance
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Crypto Trading Bot RDS instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: PostgreSQL access from EC2
+
+  # RDS PostgreSQL Instance
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-crypto-bot-db
+      AllocatedStorage: 20
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: postgres
+      EngineVersion: '14.6'
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: !Ref DBName
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageType: gp3
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-db
+
+  # EC2 Instance with GPU
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: ami-0c7217cdde317cfec  # Ubuntu 22.04 with NVIDIA drivers
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      SubnetId: !Ref SubnetId
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 100
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          # Update system
+          apt-get update && apt-get upgrade -y
+          
+          # Install Docker and Docker Compose
+          apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+          add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+          apt-get update
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          
+          # Install AWS CLI
+          apt-get install -y awscli
+          
+          # Install NVIDIA Container Toolkit
+          distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+          curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
+          curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
+          apt-get update && apt-get install -y nvidia-container-toolkit
+          systemctl restart docker
+          
+          # Create app directory
+          mkdir -p /app
+          cd /app
+          
+          # Clone repository or download application
+          # git clone https://github.com/your-repo/crypto_trading_bot.git
+          # cd crypto_trading_bot
+          
+          # Create .env file
+          cat > .env << EOL
+          # Database settings
+          DB_HOST=${DBInstance.Endpoint.Address}
+          DB_PORT=5432
+          DB_NAME=${DBName}
+          DB_USER=${DBUsername}
+          DB_PASSWORD=${DBPassword}
+          
+          # AWS settings
+          AWS_REGION=${AWS::Region}
+          
+          # Trading settings
+          INITIAL_CAPITAL=10000
+          PAPER_TRADING=true
+          EOL
+          
+          # Start the application with Docker Compose
+          docker-compose up -d
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-ec2
+
+  # CloudWatch Dashboard
+  CloudWatchDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${EnvironmentName}-crypto-bot-dashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/EC2", "CPUUtilization", "InstanceId", "${EC2Instance}" ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "EC2 CPU Utilization"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${DBInstance}" ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "RDS CPU Utilization"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/crypto-trading-bot/crypto-bot' | fields @timestamp, @message | sort @timestamp desc | limit 100",
+                "region": "${AWS::Region}",
+                "title": "Crypto Bot Logs",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  EC2InstanceId:
+    Description: ID of the EC2 instance
+    Value: !Ref EC2Instance
+    
+  EC2PublicDNS:
+    Description: Public DNS of the EC2 instance
+    Value: !GetAtt EC2Instance.PublicDnsName
+    
+  DashboardURL:
+    Description: URL for the trading bot dashboard
+    Value: !Sub http://${EC2Instance.PublicDnsName}:5000
+    
+  GrafanaURL:
+    Description: URL for Grafana dashboard
+    Value: !Sub http://${EC2Instance.PublicDnsName}:3000
+    
+  PrometheusURL:
+    Description: URL for Prometheus
+    Value: !Sub http://${EC2Instance.PublicDnsName}:9090
+    
+  RDSEndpoint:
+    Description: Endpoint of the RDS instance
+    Value: !GetAtt DBInstance.Endpoint.Address

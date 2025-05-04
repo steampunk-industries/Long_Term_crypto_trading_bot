@@ -1,0 +1,35 @@
+{
+  "dashboard_scripts": [
+    "./deploy_production_dashboard.sh",
+    "./run_dashboard.sh",
+    "./install_dashboard_service.sh",
+    "./setup_venv_and_deploy.sh",
+    "./run_paper_trading.sh",
+    "./start_website.sh"
+  ],
+  "deployment_scripts": [
+    "./deploy_final.sh",
+    "./deploy-to-aws.sh",
+    "./setup-aws-deployment.sh",
+    "./check_deployment.sh",
+    "./deploy_crypto_app.sh",
+    "./setup_aws_permissions.sh",
+    "./Dockerfile",
+    "./deploy-steampunk.sh",
+    "./deploy_enhanced_aws.sh",
+    "./deploy_x86.sh",
+    "./check_x86_deployment.sh",
+    "./deploy_simple.sh",
+    "./scripts/deploy_microservices.sh"
+  ],
+  "aws_scripts": [
+    "./edit_yaml.sh"
+  ],
+  "testing_scripts": [
+    "./code_analysis_script.sh"
+  ],
+  "other_scripts": [
+    "./LICENSE",
+    "./make_executable.sh"
+  ]
+}

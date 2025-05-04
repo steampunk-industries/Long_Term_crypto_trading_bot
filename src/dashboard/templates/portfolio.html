@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4 mb-4"><i class="fas fa-chart-pie me-2"></i>Portfolio Overview</h1>
+    
+    <div class="row">
+        <!-- Portfolio Value Chart -->
+        <div class="col-lg-12 mb-4">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Portfolio Performance</h5>
+                </div>
+                <div class="card-body">
+                    {% if portfolio_chart %}
+                    <div id="portfolio-chart" style="height: 400px;"></div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No portfolio data available yet. Data will appear as trades are executed.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Current Holdings -->
+        <div class="col-lg-12 mb-4">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Current Holdings</h5>
+                </div>
+                <div class="card-body">
+                    {% if exchanges %}
+                        {% for exchange_name, balances in exchanges.items() %}
+                            <h5 class="text-warning">{{ exchange_name|capitalize }} Exchange</h5>
+                            {% if balances %}
+                                <div class="table-responsive mb-4">
+                                    <table class="table table-dark table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Currency</th>
+                                                <th>Balance</th>
+                                                <th>Price (USD)</th>
+                                                <th>Value (USD)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for asset in balances %}
+                                                <tr>
+                                                    <td>{{ asset.currency }}</td>
+                                                    <td>{{ "%.8f"|format(asset.balance) }}</td>
+                                                    <td>
+                                                        {% if asset.currency in ['USDT', 'USD'] %}
+                                                        $1.00
+                                                        {% else %}
+                                                        ${{ "%.2f"|format(asset.price) }}
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>${{ "%.2f"|format(asset.value_usd) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info mb-4">
+                                    <i class="fas fa-info-circle me-2"></i>No assets found for this exchange.
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>No exchange data available.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Asset Allocation -->
+        <div class="col-lg-6 mb-4">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-percentage me-2"></i>Asset Allocation</h5>
+                </div>
+                <div class="card-body">
+                    {% if allocation_chart %}
+                    <div id="allocation-chart" style="height: 300px;"></div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No asset allocation data available.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="col-lg-6 mb-4">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Performance Metrics</h5>
+                </div>
+                <div class="card-body">
+                    {% if latest_snapshot %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body py-3">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-uppercase mb-1">Total Value</div>
+                                            <div class="h5 mb-0 font-weight-bold">${{ "%.2f"|format(latest_snapshot.total_value) }}</div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-dollar-sign fa-2x"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body py-3">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-uppercase mb-1">Last Update</div>
+                                            <div class="h5 mb-0 font-weight-bold">{{ latest_snapshot.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-calendar fa-2x"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card {% if performance_data.daily_change > 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
+                                <div class="card-body py-3">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-uppercase mb-1">24h Change</div>
+                                            <div class="h5 mb-0 font-weight-bold">{{ "%.2f"|format(performance_data.daily_change) }}%</div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas {% if performance_data.daily_change > 0 %}fa-arrow-up{% else %}fa-arrow-down{% endif %} fa-2x"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <div class="card {% if performance_data.weekly_change > 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
+                                <div class="card-body py-3">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-uppercase mb-1">7d Change</div>
+                                            <div class="h5 mb-0 font-weight-bold">{{ "%.2f"|format(performance_data.weekly_change) }}%</div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas {% if performance_data.weekly_change > 0 %}fa-arrow-up{% else %}fa-arrow-down{% endif %} fa-2x"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No performance data available.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if portfolio_chart %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var portfolioChart = {{ portfolio_chart|safe }};
+        Plotly.newPlot('portfolio-chart', portfolioChart.data, portfolioChart.layout);
+    });
+</script>
+{% endif %}
+
+{% if allocation_chart %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var allocationChart = {{ allocation_chart|safe }};
+        Plotly.newPlot('allocation-chart', allocationChart.data, allocationChart.layout);
+    });
+</script>
+{% endif %}
+{% endblock %}

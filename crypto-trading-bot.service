@@ -1,0 +1,14 @@
+[Unit]
+Description=Crypto Trading Bot
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Long_Term_crypto_trading_bot
+ExecStart=/usr/bin/python3 run_bot.py --bot-only --interval 5
+Restart=always
+RestartSec=5
+Environment=PYTHONPATH=/home/ubuntu/Long_Term_crypto_trading_bot
+
+[Install]
+WantedBy=multi-user.target

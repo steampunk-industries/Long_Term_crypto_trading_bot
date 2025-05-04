@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  # Message broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: crypto_trading_rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # Database
+  postgres:
+    image: postgres:15
+    container_name: crypto_trading_postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=crypto_trader
+      - POSTGRES_PASSWORD=crypto_password
+      - POSTGRES_DB=crypto_trading
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crypto_trader -d crypto_trading"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Trading service (low risk)
+  trading_low_risk:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_low_risk
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - EXCHANGE_NAME=binance
+      - SYMBOL=BTC/USDT
+      - STRATEGY_TYPE=low_risk
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - LOG_LEVEL=INFO
+    command: ["python", "-m", "microservices.trading_service", "--exchange", "binance", "--symbol", "BTC/USDT", "--strategy", "low_risk", "--rabbitmq", "amqp://guest:guest@rabbitmq:5672/"]
+    restart: unless-stopped
+
+  # Trading service (medium risk)
+  trading_medium_risk:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_medium_risk
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - EXCHANGE_NAME=binance
+      - SYMBOL=BTC/USDT
+      - STRATEGY_TYPE=medium_risk
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - LOG_LEVEL=INFO
+    command: ["python", "-m", "microservices.trading_service", "--exchange", "binance", "--symbol", "BTC/USDT", "--strategy", "medium_risk", "--rabbitmq", "amqp://guest:guest@rabbitmq:5672/"]
+    restart: unless-stopped
+
+  # Trading service (high risk)
+  trading_high_risk:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_high_risk
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - EXCHANGE_NAME=binance
+      - SYMBOL=BTC/USDT
+      - STRATEGY_TYPE=high_risk
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - LOG_LEVEL=INFO
+    command: ["python", "-m", "microservices.trading_service", "--exchange", "binance", "--symbol", "BTC/USDT", "--strategy", "high_risk", "--rabbitmq", "amqp://guest:guest@rabbitmq:5672/"]
+    restart: unless-stopped
+
+  # Market data service
+  market_data_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_market_data
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - EXCHANGE_NAME=binance
+      - SYMBOLS=BTC/USDT,ETH/USDT
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - LOG_LEVEL=INFO
+      - FETCH_INTERVAL=60
+    command: ["python", "-m", "microservices.market_data_service", "--exchange", "binance", "--symbols", "BTC/USDT,ETH/USDT", "--rabbitmq", "amqp://guest:guest@rabbitmq:5672/"]
+    restart: unless-stopped
+
+  # API gateway
+  api_gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - LOG_LEVEL=INFO
+      - API_PORT=8000
+      - ENABLE_SWAGGER=true
+    command: ["python", "-m", "microservices.api_gateway"]
+    restart: unless-stopped
+
+  # Dashboard service
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+    container_name: crypto_trading_dashboard
+    ports:
+      - "5000:5000"
+    depends_on:
+      - rabbitmq
+      - postgres
+      - api_gateway
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://crypto_trader:crypto_password@postgres:5432/crypto_trading
+      - API_URL=http://api_gateway:8000
+      - DASHBOARD_PORT=5000
+      - LOG_LEVEL=INFO
+    command: ["python", "-m", "microservices.dashboard_service"]
+    restart: unless-stopped
+
+  # Monitoring service
+  prometheus:
+    image: prom/prometheus:v2.46.0
+    container_name: crypto_trading_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: crypto_trading_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

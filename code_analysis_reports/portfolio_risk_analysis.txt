@@ -1,0 +1,5 @@
+Portfolio Risk Issues:
+- moving_average_crossover: No stop-loss mechanism detected
+- moving_average_crossover: No position sizing controls detected
+- rsi_strategy: No stop-loss mechanism detected
+- rsi_strategy: No position sizing controls detected

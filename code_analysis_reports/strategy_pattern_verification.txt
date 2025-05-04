@@ -1,0 +1,3 @@
+Strategy Pattern Issues:
+- moving_average_crossover: Missing implementations for run
+- rsi_strategy: Missing implementations for run

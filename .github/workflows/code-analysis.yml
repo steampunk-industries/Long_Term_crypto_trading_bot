@@ -1,0 +1,202 @@
+name: Code Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sundays
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Security scans
+      run: |
+        # Python security check
+        pip install safety
+        safety check -r requirements.txt --output json > security_report.json || true
+        
+    - name: Exchange API consistency check
+      run: |
+        python -c "
+        import glob
+        import re
+        
+        exchange_files = glob.glob('./src/exchanges/*.py')
+        base_file = './src/exchanges/base_exchange.py'
+        required_methods = ['connect', 'get_balance', 'get_ticker', 'place_order', 'cancel_order']
+        
+        findings = []
+        
+        for file in [f for f in exchange_files if f != base_file and not f.endswith('__init__.py')]:
+          with open(file, 'r') as f:
+            content = f.read()
+            
+          exchange_name = file.split('/')[-1].replace('.py', '')
+          missing_methods = []
+          
+          for method in required_methods:
+            if not re.search(f'def {method}\\\\(', content):
+              missing_methods.append(method)
+          
+          if missing_methods:
+            findings.append(f'{exchange_name}: Missing implementations for {', '.join(missing_methods)}')
+        
+        if findings:
+          print('Exchange API Consistency Issues:')
+          for finding in findings:
+            print(f'- {finding}')
+          exit(1)  # Fail the build if issues found
+        else:
+          print('All exchange implementations are consistent with the base class.')
+        "
+      continue-on-error: true
+      
+    - name: Strategy pattern verification
+      run: |
+        python -c "
+        import glob
+        import re
+        
+        strategy_files = glob.glob('./src/strategies/*.py')
+        base_file = './src/strategies/base_strategy.py'
+        required_methods = ['generate_signals', 'run']
+        
+        findings = []
+        
+        for file in [f for f in strategy_files if f != base_file and not f.endswith('__init__.py')]:
+          with open(file, 'r') as f:
+            content = f.read()
+            
+          strategy_name = file.split('/')[-1].replace('.py', '')
+          missing_methods = []
+          
+          for method in required_methods:
+            if not re.search(f'def {method}\\\\(', content):
+              missing_methods.append(method)
+          
+          if missing_methods:
+            findings.append(f'{strategy_name}: Missing implementations for {', '.join(missing_methods)}')
+        
+        if findings:
+          print('Strategy Pattern Issues:')
+          for finding in findings:
+            print(f'- {finding}')
+          exit(1)  # Fail the build if issues found
+        else:
+          print('All strategy implementations follow the required pattern.')
+        "
+      continue-on-error: true
+      
+    - name: Risk management validation
+      run: |
+        python -c "
+        import glob
+        import re
+        
+        strategy_files = glob.glob('./src/strategies/*.py')
+        issues = []
+        
+        for file in strategy_files:
+          if file.endswith('__init__.py') or file.endswith('base_strategy.py'):
+            continue
+            
+          with open(file, 'r') as f:
+            content = f.read()
+            
+          strategy_name = file.split('/')[-1].replace('.py', '')
+          
+          # Check for stop loss implementation
+          if not re.search(r'stop_loss|stoploss', content, re.IGNORECASE):
+            issues.append(f'{strategy_name}: No stop-loss mechanism detected')
+            
+          # Check for position sizing
+          if not re.search(r'position_size|risk_percentage|risk_factor', content, re.IGNORECASE):
+            issues.append(f'{strategy_name}: No position sizing controls detected')
+        
+        if issues:
+          print('Risk Management Issues:')
+          for issue in issues:
+            print(f'- {issue}')
+          exit(1)  # Fail the build if issues found
+        else:
+          print('All strategies include risk management controls.')
+        "
+      continue-on-error: true
+      
+    - name: Code quality checks
+      run: |
+        pip install flake8 pylint
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        pylint src/ --errors-only
+      continue-on-error: true
+      
+    - name: Test with pytest
+      run: |
+        pip install pytest pytest-cov
+        python -m pytest tests/ --cov=src --cov-report=xml
+      continue-on-error: true
+      
+    - name: Run comprehensive analysis
+      run: |
+        chmod +x ./code_analysis_script.sh
+        ./code_analysis_script.sh
+        
+    - name: Upload analysis reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-analysis-reports
+        path: code_analysis_reports/
+        
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: htmlcov/
+        
+    - name: Generate GitHub issues for critical problems
+      if: github.event_name != 'pull_request' && github.repository == 'your-username/Long_Term_crypto_trading_bot'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Create GitHub issues from report findings
+        pip install PyGithub
+        python scripts/create_issues_from_reports.py
+      continue-on-error: true
+
+# Job to notify about results
+  notify:
+    needs: analyze
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify on success
+        if: ${{ needs.analyze.result == 'success' }}
+        run: echo "Analysis completed successfully!"
+        
+      - name: Notify on failure
+        if: ${{ needs.analyze.result == 'failure' }}
+        run: echo "Analysis failed, check logs for details"

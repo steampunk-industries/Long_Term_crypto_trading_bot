@@ -1,0 +1,3 @@
+Exchange API Consistency Issues:
+- gemini_exchange: Missing implementations for place_order, cancel_order
+- kraken_exchange: Missing implementations for cancel_order

@@ -1,0 +1,14 @@
+{
+  "steampunk.holdings": {
+    "url": "https://api.steampunk.holdings/v1/health",
+    "headers": {},
+    "timeout": 10,
+    "success_codes": [
+      200,
+      204
+    ],
+    "last_check": 1745773866.3503544,
+    "status": "down",
+    "since": "2025-04-27T17:11:06.350356"
+  }
+}

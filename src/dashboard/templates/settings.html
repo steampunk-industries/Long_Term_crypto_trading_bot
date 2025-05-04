@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Settings</h1>
+
+<div class="row">
+    <!-- User Settings -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-user-cog me-2"></i>User Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" value="{{ user_settings.username }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" value="{{ user_settings.email }}" readonly>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Trading Settings -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Trading Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Trading Mode</label>
+                    <input type="text" class="form-control {% if is_paper_trading %}bg-info text-white{% else %}bg-danger text-white{% endif %}" value="{% if is_paper_trading %}Paper Trading{% else %}Live Trading{% endif %}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Trading Symbol</label>
+                    <input type="text" class="form-control" value="{{ settings.TRADING_SYMBOL }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Initial Capital</label>
+                    <input type="text" class="form-control" value="${{ "%.2f"|format(settings.INITIAL_CAPITAL) }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Exchange</label>
+                    <input type="text" class="form-control" value="{{ exchange_name|capitalize }}" readonly>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Risk Management -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Risk Management</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Low Risk</th>
+                            <th>Medium Risk</th>
+                            <th>High Risk</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Stop Loss</td>
+                            <td>{{ "%.1f"|format(settings.LOW_RISK_STOP_LOSS * 100) }}%</td>
+                            <td>{{ "%.1f"|format(settings.MEDIUM_RISK_STOP_LOSS * 100) }}%</td>
+                            <td>{{ "%.1f"|format(settings.HIGH_RISK_STOP_LOSS * 100) }}%</td>
+                        </tr>
+                        <tr>
+                            <td>Leverage</td>
+                            <td>1x</td>
+                            <td>{{ "%.1f"|format(settings.MEDIUM_RISK_LEVERAGE) }}x</td>
+                            <td>{{ "%.1f"|format(settings.HIGH_RISK_LEVERAGE) }}x</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <hr>
+                <div class="mb-3 row">
+                    <label class="col-sm-8 col-form-label">Maximum Portfolio Drawdown</label>
+                    <div class="col-sm-4">
+                        <input type="text" class="form-control" value="{{ "%.1f"|format(settings.MAX_PORTFOLIO_DRAWDOWN * 100) }}%" readonly>
+                    </div>
+                </div>
+                <div class="mb-3 row">
+                    <label class="col-sm-8 col-form-label">Maximum Allocation Per Asset</label>
+                    <div class="col-sm-4">
+                        <input type="text" class="form-control" value="{{ "%.1f"|format(settings.MAX_ALLOCATION_PER_ASSET * 100) }}%" readonly>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Current Assets -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Current Assets</h5>
+            </div>
+            <div class="card-body">
+                {% if assets %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Currency</th>
+                                <th>Balance</th>
+                                <th>Price (USD)</th>
+                                <th>Value (USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for asset in assets %}
+                            <tr>
+                                <td>{{ asset.currency }}</td>
+                                <td>{{ "%.8f"|format(asset.balance) }}</td>
+                                <td>
+                                    {% if asset.currency in ['USDT', 'USD'] %}
+                                    $1.00
+                                    {% else %}
+                                    ${{ "%.2f"|format(asset.price) }}
+                                    {% endif %}
+                                </td>
+                                <td>${{ "%.2f"|format(asset.value_usd) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>No assets found. This could be due to an exchange connection issue or because your account has no assets.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Advanced Settings -->
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Advanced Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Taker Fee</label>
+                        <input type="text" class="form-control" value="{{ "%.4f"|format(settings.TAKER_FEE * 100) }}%" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Maker Fee</label>
+                        <input type="text" class="form-control" value="{{ "%.4f"|format(settings.MAKER_FEE * 100) }}%" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Risk-Free Rate</label>
+                        <input type="text" class="form-control" value="{{ "%.2f"|format(settings.RISK_FREE_RATE * 100) }}%" readonly>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Profit Threshold for Withdrawal</label>
+                        <input type="text" class="form-control" value="${{ "%.2f"|format(settings.PROFIT_THRESHOLD) }}" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Profit Withdrawal Percentage</label>
+                        <input type="text" class="form-control" value="{{ "%.1f"|format(settings.PROFIT_WITHDRAWAL_PERCENTAGE * 100) }}%" readonly>
+                    </div>
+                </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>These settings can be updated by modifying the <code>.env</code> file and restarting the bot.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

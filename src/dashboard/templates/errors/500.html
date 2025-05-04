@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>500 - Internal Server Error</h4>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-cogs fa-5x text-muted mb-3"></i>
+                    <h2>Oops! Something went wrong.</h2>
+                    <p class="lead">We're experiencing some technical difficulties. Please try again later.</p>
+                </div>
+                <div class="mb-4">
+                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+                        <i class="fas fa-home me-2"></i>Return to Dashboard
+                    </a>
+                    <button onclick="location.reload()" class="btn btn-outline-secondary ms-2">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh Page
+                    </button>
+                </div>
+            </div>
+            <div class="card-footer text-muted">
+                <small>If this problem persists, please contact the administrator.</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

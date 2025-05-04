@@ -1,0 +1,11 @@
+{
+  "69d39d6c61e94d58b6d89cebd41b5dd4": [
+    "./aws-cloudformation-enhanced.yml",
+    "./aws-cloudformation-enhanced.yml.bak2"
+  ],
+  "e308d90ecb8195e62c1c996c14b17846": [
+    "./src/exchange/__init__.py",
+    "./src/models/__init__.py",
+    "./tests/__init__.py"
+  ]
+}

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Bot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #f1f3f5;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .nav-tabs .nav-link {
+            border: none;
+            color: #495057;
+            font-weight: 500;
+        }
+        .nav-tabs .nav-link.active {
+            color: #007bff;
+            background-color: transparent;
+            border-bottom: 2px solid #007bff;
+        }
+        .strategy-card {
+            transition: transform 0.2s;
+        }
+        .strategy-card:hover {
+            transform: translateY(-5px);
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-currency-bitcoin me-2"></i>
+                Crypto Trading Bot
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="startAllBtn">Start All</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="stopAllBtn">Stop All</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h2>Portfolio Overview</h2>
+                <p class="text-muted">Real-time portfolio performance and allocation</p>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary" id="refreshBtn">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Summary -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="metric-label">Total Capital</h6>
+                        <div class="metric-value" id="totalCapital">$0.00</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="metric-label">Drawdown</h6>
+                        <div class="metric-value" id="drawdown">0.00%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="metric-label">Sharpe Ratio</h6>
+                        <div class="metric-value" id="sharpeRatio">0.00</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="metric-label">Market Regime</h6>
+                        <div class="metric-value" id="marketRegime">Unknown</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Chart -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        Portfolio Performance
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="portfolioChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Cards -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h3>Trading Strategies</h3>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Low Risk Strategy -->
+            <div class="col-md-4">
+                <div class="card strategy-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="status-indicator" id="lowRiskStatus"></span>
+                            Low Risk Strategy
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-success btn-sm start-btn" data-strategy="low_risk">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-danger btn-sm stop-btn" data-strategy="low_risk">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">Symbol</div>
+                                <div id="lowRiskSymbol">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">Grid Levels</div>
+                                <div id="lowRiskGridLevels">-</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">Open Orders</div>
+                                <div id="lowRiskOpenOrders">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">In Position</div>
+                                <div id="lowRiskPosition">No</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="metric-label">Performance</div>
+                                <div class="progress mt-1">
+                                    <div id="lowRiskPerformance" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Medium Risk Strategy -->
+            <div class="col-md-4">
+                <div class="card strategy-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="status-indicator" id="mediumRiskStatus"></span>
+                            Medium Risk Strategy
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-success btn-sm start-btn" data-strategy="medium_risk">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-danger btn-sm stop-btn" data-strategy="medium_risk">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">Symbol</div>
+                                <div id="mediumRiskSymbol">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">Signal</div>
+                                <div id="mediumRiskSignal">-</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">RSI</div>
+                                <div id="mediumRiskRSI">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">In Position</div>
+                                <div id="mediumRiskPosition">No</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="metric-label">Performance</div>
+                                <div class="progress mt-1">
+                                    <div id="mediumRiskPerformance" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- High Risk Strategy -->
+            <div class="col-md-4">
+                <div class="card strategy-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="status-indicator" id="highRiskStatus"></span>
+                            High Risk Strategy
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-success btn-sm start-btn" data-strategy="high_risk">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-danger btn-sm stop-btn" data-strategy="high_risk">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">Symbol</div>
+                                <div id="highRiskSymbol">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">Prediction</div>
+                                <div id="highRiskPrediction">-</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <div class="metric-label">Signal Strength</div>
+                                <div id="highRiskSignalStrength">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">In Position</div>
+                                <div id="highRiskPosition">No</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="metric-label">Performance</div>
+                                <div class="progress mt-1">
+                                    <div id="highRiskPerformance" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Asset Allocation -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Asset Allocation
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Strategy Allocation
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="strategyAllocationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dashboard JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize charts
+            const portfolioCtx = document.getElementById('portfolioChart').getContext('2d');
+            const portfolioChart = new Chart(portfolioCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: [],
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }, {
+                        label: 'Drawdown',
+                        data: [],
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'Portfolio Value ($)'
+                            }
+                        },
+                        y1: {
+                            position: 'right',
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Drawdown (%)'
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            });
+
+            const allocationCtx = document.getElementById('allocationChart').getContext('2d');
+            const allocationChart = new Chart(allocationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#007bff', '#28a745', '#ffc107', '#dc3545', '#6c757d', '#17a2b8'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+
+            const strategyAllocationCtx = document.getElementById('strategyAllocationChart').getContext('2d');
+            const strategyAllocationChart = new Chart(strategyAllocationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+                    datasets: [{
+                        data: [33, 33, 34],
+                        backgroundColor: [
+                            '#28a745', '#ffc107', '#dc3545'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+
+            // Fetch data and update UI
+            function updateDashboard() {
+                // Fetch status
+                fetch('/api/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update bot status
+                        updateBotStatus(data);
+                    })
+                    .catch(error => console.error('Error fetching status:', error));
+
+                // Fetch performance
+                fetch('/api/performance')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update performance metrics
+                        updatePerformanceMetrics(data);
+                    })
+                    .catch(error => console.error('Error fetching performance:', error));
+
+                // Fetch market regime
+                fetch('/api/market_regime')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update market regime
+                        updateMarketRegime(data);
+                    })
+                    .catch(error => console.error('Error fetching market regime:', error));
+
+                // Fetch portfolio chart data
+                fetch('/api/chart/portfolio')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update portfolio chart
+                        updatePortfolioChart(data);
+                    })
+                    .catch(error => console.error('Error fetching portfolio chart data:', error));
+            }
+
+            function updateBotStatus(data) {
+                // Update global status
+                const running = data.running;
+                
+                // Update bot-specific status
+                if (data.bots.low_risk) {
+                    const lowRisk = data.bots.low_risk;
+                    document.getElementById('lowRiskStatus').className = lowRisk.running ? 'status-indicator status-active' : 'status-indicator status-inactive';
+                    document.getElementById('lowRiskSymbol').textContent = lowRisk.symbol || '-';
+                    document.getElementById('lowRiskGridLevels').textContent = lowRisk.grid_levels || '-';
+                    document.getElementById('lowRiskOpenOrders').textContent = lowRisk.open_orders || '0';
+                    document.getElementById('lowRiskPosition').textContent = lowRisk.in_position ? 'Yes' : 'No';
+                }
+                
+                if (data.bots.medium_risk) {
+                    const mediumRisk = data.bots.medium_risk;
+                    document.getElementById('mediumRiskStatus').className = mediumRisk.running ? 'status-indicator status-active' : 'status-indicator status-inactive';
+                    document.getElementById('mediumRiskSymbol').textContent = mediumRisk.symbol || '-';
+                    document.getElementById('mediumRiskSignal').textContent = mediumRisk.signal || '-';
+                    document.getElementById('mediumRiskRSI').textContent = mediumRisk.rsi ? mediumRisk.rsi.toFixed(2) : '-';
+                    document.getElementById('mediumRiskPosition').textContent = mediumRisk.in_position ? 'Yes' : 'No';
+                }
+                
+                if (data.bots.high_risk) {
+                    const highRisk = data.bots.high_risk;
+                    document.getElementById('highRiskStatus').className = highRisk.running ? 'status-indicator status-active' : 'status-indicator status-inactive';
+                    document.getElementById('highRiskSymbol').textContent = highRisk.symbol || '-';
+                    document.getElementById('highRiskPrediction').textContent = getPredictionText(highRisk.prediction);
+                    document.getElementById('highRiskSignalStrength').textContent = highRisk.combined_signal ? highRisk.combined_signal.toFixed(2) : '-';
+                    document.getElementById('highRiskPosition').textContent = highRisk.in_position ? 'Yes' : 'No';
+                }
+                
+                // Update portfolio data
+                if (data.portfolio) {
+                    const portfolio = data.portfolio;
+                    document.getElementById('totalCapital').textContent = '$' + portfolio.total_capital.toFixed(2);
+                    
+                    // Update allocation chart
+                    if (portfolio.asset_allocation) {
+                        const labels = [];
+                        const values = [];
+                        
+                        for (const [asset, allocation] of Object.entries(portfolio.asset_allocation)) {
+                            labels.push(asset);
+                            values.push(allocation.percentage * 100);
+                        }
+                        
+                        allocationChart.data.labels = labels;
+                        allocationChart.data.datasets[0].data = values;
+                        allocationChart.update();
+                    }
+                    
+                    // Update strategy allocation chart
+                    if (portfolio.strategy_allocation) {
+                        const values = [
+                            portfolio.strategy_allocation.low_risk || 0,
+                            portfolio.strategy_allocation.medium_risk || 0,
+                            portfolio.strategy_allocation.high_risk || 0
+                        ].map(v => v * 100);
+                        
+                        strategyAllocationChart.data.datasets[0].data = values;
+                        strategyAllocationChart.update();
+                    }
+                }
+            }
+
+            function updatePerformanceMetrics(data) {
+                if (data.portfolio) {
+                    const portfolio = data.portfolio;
+                    document.getElementById('drawdown').textContent = (portfolio.drawdown * 100).toFixed(2) + '%';
+                    document.getElementById('sharpeRatio').textContent = portfolio.sharpe_ratio ? portfolio.sharpe_ratio.toFixed(2) : '0.00';
+                    
+                    // Update bot performance bars
+                    if (data.bots.low_risk) {
+                        const performance = data.bots.low_risk.total_return_pct || 0;
+                        const bar = document.getElementById('lowRiskPerformance');
+                        bar.style.width = Math.abs(performance) + '%';
+                        bar.className = performance >= 0 ? 'progress-bar bg-success' : 'progress-bar bg-danger';
+                    }
+                    
+                    if (data.bots.medium_risk) {
+                        const performance = data.bots.medium_risk.total_return_pct || 0;
+                        const bar = document.getElementById('mediumRiskPerformance');
+                        bar.style.width = Math.abs(performance) + '%';
+                        bar.className = performance >= 0 ? 'progress-bar bg-success' : 'progress-bar bg-danger';
+                    }
+                    
+                    if (data.bots.high_risk) {
+                        const performance = data.bots.high_risk.total_return_pct || 0;
+                        const bar = document.getElementById('highRiskPerformance');
+                        bar.style.width = Math.abs(performance) + '%';
+                        bar.className = performance >= 0 ? 'progress-bar bg-success' : 'progress-bar bg-danger';
+                    }
+                }
+            }
+
+            function updateMarketRegime(data) {
+                if (data.regime) {
+                    let regimeText = data.regime.charAt(0).toUpperCase() + data.regime.slice(1).replace('_', ' ');
+                    document.getElementById('marketRegime').textContent = regimeText;
+                }
+            }
+
+            function updatePortfolioChart(data) {
+                if (data.capital && data.capital.length > 0) {
+                    const labels = data.capital.map(item => item.date);
+                    const values = data.capital.map(item => item.value);
+                    
+                    portfolioChart.data.labels = labels;
+                    portfolioChart.data.datasets[0].data = values;
+                    
+                    if (data.drawdowns && data.drawdowns.length > 0) {
+                        const drawdowns = data.drawdowns.map(item => item.value);
+                        portfolioChart.data.datasets[1].data = drawdowns;
+                    }
+                    
+                    portfolioChart.update();
+                }
+            }
+
+            function getPredictionText(prediction) {
+                if (prediction === 1) return 'Buy';
+                if (prediction === -1) return 'Sell';
+                return 'Hold';
+            }
+
+            // Event listeners for control buttons
+            document.getElementById('startAllBtn').addEventListener('click', function() {
+                controlBot('start', 'all');
+            });
+
+            document.getElementById('stopAllBtn').addEventListener('click', function() {
+                controlBot('stop', 'all');
+            });
+
+            document.querySelectorAll('.start-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const strategy = this.dataset.strategy;
+                    controlBot('start', strategy);
+                });
+            });
+
+            document.querySelectorAll('.stop-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const strategy = this.dataset.strategy;
+                    controlBot('stop', strategy);
+                });
+            });
+
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                updateDashboard();
+            });
+
+            function controlBot(action, botType) {
+                const formData = new FormData();
+                formData.append('action', action);
+                formData.append('bot_type', botType);
+                
+                fetch('/api/control', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update UI after successful action
+                        setTimeout(updateDashboard, 1000);
+                    } else {
+                        console.error('Error:', data.error);
+                    }
+                })
+                .catch(error => console.error('Error controlling bot:', error));
+            }
+
+            // Initial update
+            updateDashboard();
+            
+            // Set up periodic updates
+            setInterval(updateDashboard, 10000); // Update every 10 seconds
+        });
+    </script>
+</body>
+</html>

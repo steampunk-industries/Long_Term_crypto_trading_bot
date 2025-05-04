@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<div class="row">
+    <!-- Portfolio Value Card -->
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-dollar-sign me-2"></i>Portfolio Value</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">${{ "%.2f"|format(snapshot.total_value_usd if snapshot else 0) }}</h2>
+                {% if snapshot and snapshot.pnl_daily is not none %}
+                <p class="mb-0 {% if snapshot.pnl_daily >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    <i class="fas {% if snapshot.pnl_daily >= 0 %}fa-arrow-up{% else %}fa-arrow-down{% endif %} me-1"></i>
+                    {{ "%.2f"|format(snapshot.pnl_daily * 100) }}% today
+                </p>
+                {% else %}
+                <p class="mb-0 text-muted">No daily change data</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- All-Time PnL Card -->
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 {% if snapshot and snapshot.pnl_all_time is not none and snapshot.pnl_all_time >= 0 %}border-success{% else %}border-danger{% endif %}">
+            <div class="card-header {% if snapshot and snapshot.pnl_all_time is not none and snapshot.pnl_all_time >= 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>All-Time PnL</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if snapshot and snapshot.pnl_all_time is not none %}
+                <h2 class="display-5 {% if snapshot.pnl_all_time >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ "%.2f"|format(snapshot.pnl_all_time * 100) }}%
+                </h2>
+                <p class="mb-0">Since inception</p>
+                {% else %}
+                <h2 class="display-5 text-muted">N/A</h2>
+                <p class="mb-0 text-muted">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Drawdown Card -->
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 {% if snapshot and snapshot.drawdown is not none and snapshot.drawdown < 0.1 %}border-success{% elif snapshot and snapshot.drawdown is not none and snapshot.drawdown < 0.2 %}border-warning{% else %}border-danger{% endif %}">
+            <div class="card-header {% if snapshot and snapshot.drawdown is not none and snapshot.drawdown < 0.1 %}bg-success{% elif snapshot and snapshot.drawdown is not none and snapshot.drawdown < 0.2 %}bg-warning{% else %}bg-danger{% endif %} text-white">
+                <h5 class="mb-0"><i class="fas fa-water me-2"></i>Drawdown</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if snapshot and snapshot.drawdown is not none %}
+                <h2 class="display-5">{{ "%.2f"|format(snapshot.drawdown * 100) }}%</h2>
+                <p class="mb-0">From peak</p>
+                {% else %}
+                <h2 class="display-5 text-muted">N/A</h2>
+                <p class="mb-0 text-muted">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Trading Mode Card -->
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 {% if config.PAPER_TRADING %}border-info{% else %}border-danger{% endif %}">
+            <div class="card-header {% if config.PAPER_TRADING %}bg-info{% else %}bg-danger{% endif %} text-white">
+                <h5 class="mb-0"><i class="fas {% if config.PAPER_TRADING %}fa-flask{% else %}fa-exclamation-triangle{% endif %} me-2"></i>Trading Mode</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{% if config.PAPER_TRADING %}Paper{% else %}Live{% endif %}</h2>
+                <p class="mb-0">{% if config.PAPER_TRADING %}Simulated trading{% else %}Real money trading{% endif %}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Portfolio Chart -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Portfolio Performance</h5>
+            </div>
+            <div class="card-body">
+                {% if portfolio_chart %}
+                <div id="portfolio-chart" style="height: 400px;"></div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>No portfolio data available yet. Data will appear as the bot runs.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Trades and Signals -->
+<div class="row">
+    <!-- Recent Trades -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Recent Trades</h5>
+                <a href="{{ url_for('dashboard.trades') }}" class="btn btn-sm btn-outline-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_trades %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Price</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trade in recent_trades %}
+                            <tr>
+                                <td>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ trade.symbol }}</td>
+                                <td class="{% if trade.side == 'buy' %}text-success{% else %}text-danger{% endif %}">
+                                    {{ trade.side.upper() }}
+                                </td>
+                                <td>${{ "%.2f"|format(trade.price) }}</td>
+                                <td>{{ "%.6f"|format(trade.amount) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>No trades have been executed yet.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Signals -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Recent Signals</h5>
+                <a href="{{ url_for('dashboard.signals') }}" class="btn btn-sm btn-outline-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_signals %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th>Strategy</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for signal in recent_signals %}
+                            <tr>
+                                <td>{{ signal.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ signal.symbol }}</td>
+                                <td>{{ signal.strategy }}</td>
+                                <td class="{% if signal.signal_type == 'buy' %}text-success{% elif signal.signal_type == 'sell' %}text-danger{% else %}text-warning{% endif %}">
+                                    {{ signal.signal_type.upper() }}
+                                </td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar {% if signal.signal_type == 'buy' %}bg-success{% elif signal.signal_type == 'sell' %}bg-danger{% else %}bg-warning{% endif %}" 
+                                             role="progressbar" 
+                                             style="width: {{ (signal.confidence or 0) * 100 }}%;" 
+                                             aria-valuenow="{{ (signal.confidence or 0) * 100 }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            {{ "%.0f"|format((signal.confidence or 0) * 100) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>No signals have been generated yet.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if portfolio_chart %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var graphJSON = {{ portfolio_chart|safe }};
+        Plotly.newPlot('portfolio-chart', graphJSON.data, graphJSON.layout);
+    });
+</script>
+{% endif %}
+{% endblock %}

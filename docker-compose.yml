@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  crypto-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      - postgres
+    networks:
+      - crypto-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/crypto-bot"
+        awslogs-create-group: "true"
+
+  dashboard:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: python -c "from src.utils.dashboard import dashboard; dashboard.start()"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - crypto-bot
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/dashboard"
+        awslogs-create-group: "true"
+
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/postgres"
+        awslogs-create-group: "true"
+
+  prometheus:
+    image: prom/prometheus:v2.42.0
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/prometheus"
+        awslogs-create-group: "true"
+
+  grafana:
+    image: grafana/grafana:9.5.1
+    restart: unless-stopped
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - crypto-network
+    depends_on:
+      - prometheus
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/grafana"
+        awslogs-create-group: "true"
+
+networks:
+  crypto-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Trading Signals</h1>
+
+<!-- Signal Stats -->
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Total Signals</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ signal_stats.total }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-arrow-up me-2"></i>Buy Signals</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ signal_stats.buy }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-arrow-down me-2"></i>Sell Signals</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ signal_stats.sell }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Execution Rate</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ "%.1f"|format(signal_stats.execution_rate) }}%</h2>
+                <p class="mb-0">{{ signal_stats.executed }} executed</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Signal Table -->
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="fas fa-table me-2"></i>All Signals</h5>
+    </div>
+    <div class="card-body">
+        {% if signals %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Symbol</th>
+                        <th>Strategy</th>
+                        <th>Signal</th>
+                        <th>Price</th>
+                        <th>Confidence</th>
+                        <th>Executed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for signal in signals %}
+                    <tr>
+                        <td>{{ signal.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ signal.symbol }}</td>
+                        <td>{{ signal.strategy }}</td>
+                        <td class="{% if signal.signal_type == 'buy' %}text-success{% elif signal.signal_type == 'sell' %}text-danger{% else %}text-warning{% endif %}">
+                            {{ signal.signal_type.upper() }}
+                        </td>
+                        <td>${{ "%.2f"|format(signal.price) }}</td>
+                        <td>
+                            <div class="progress">
+                                <div class="progress-bar {% if signal.signal_type == 'buy' %}bg-success{% elif signal.signal_type == 'sell' %}bg-danger{% else %}bg-warning{% endif %}" 
+                                    role="progressbar" 
+                                    style="width: {{ (signal.confidence or 0) * 100 }}%;" 
+                                    aria-valuenow="{{ (signal.confidence or 0) * 100 }}" 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100">
+                                    {{ "%.0f"|format((signal.confidence or 0) * 100) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if signal.executed %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>No signals have been generated yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Strategy Analysis -->
+{% if strategies %}
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Strategy Analysis</h5>
+    </div>
+    <div class="card-body">
+        <div class="accordion" id="strategyAccordion">
+            {% for strategy_name, strategy_signals in strategies.items() %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading{{ loop.index }}">
+                    <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="{{ 'true' if loop.first else 'false' }}" aria-controls="collapse{{ loop.index }}">
+                        {{ strategy_name }}
+                    </button>
+                </h2>
+                <div id="collapse{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#strategyAccordion">
+                    <div class="accordion-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Signal Distribution</h5>
+                                        <div class="d-flex justify-content-around align-items-center mt-3">
+                                            <div class="text-center">
+                                                <div class="fs-4 text-success">{{ strategy_signals|selectattr('signal_type', 'equalto', 'buy')|list|length }}</div>
+                                                <div>Buy</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-4 text-danger">{{ strategy_signals|selectattr('signal_type', 'equalto', 'sell')|list|length }}</div>
+                                                <div>Sell</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-4 text-warning">{{ strategy_signals|selectattr('signal_type', 'equalto', 'hold')|list|length }}</div>
+                                                <div>Hold</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Execution Rate</h5>
+                                        <div class="text-center mt-3">
+                                            {% set executed = strategy_signals|selectattr('executed', 'true')|list|length %}
+                                            {% set total = strategy_signals|length %}
+                                            {% set rate = (executed / total * 100) if total > 0 else 0 %}
+                                            <div class="display-6">{{ "%.1f"|format(rate) }}%</div>
+                                            <div>{{ executed }} / {{ total }} signals executed</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Average Confidence</h5>
+                                        <div class="text-center mt-3">
+                                            {% set confidences = strategy_signals|map(attribute='confidence')|reject('none')|list %}
+                                            {% set avg_confidence = (confidences|sum / confidences|length * 100) if confidences|length > 0 else 0 %}
+                                            <div class="display-6">{{ "%.1f"|format(avg_confidence) }}%</div>
+                                            <div>Based on {{ confidences|length }} signals</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

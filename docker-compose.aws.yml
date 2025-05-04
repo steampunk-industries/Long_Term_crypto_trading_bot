@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  crypto-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      - postgres
+    networks:
+      - crypto-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/crypto-bot"
+        awslogs-create-group: "true"
+    environment:
+      - INITIAL_CAPITAL=10000
+      - PAPER_TRADING=true
+      - TRADING_EXCHANGE=binance
+      - TRADING_SYMBOL=BTC/USDT
+      - USE_ALTERNATIVE_DATA=true
+      - REAL_WORLD_PRICES=true
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "5003:5003"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - postgres
+      - crypto-bot
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/dashboard"
+        awslogs-create-group: "true"
+    environment:
+      - DOMAIN_NAME=steampunk.holdings
+      - INITIAL_BTC_PRICE=84000
+      - ENABLE_SSL=${ENABLE_SSL:-false}
+
+  nginx:
+    image: nginx:1.25.1-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/dashboard.conf:/etc/nginx/conf.d/default.conf
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - dashboard
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/nginx"
+        awslogs-create-group: "true"
+
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-crypto_bot}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/postgres"
+        awslogs-create-group: "true"
+
+  prometheus:
+    image: prom/prometheus:v2.42.0
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - crypto-network
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/prometheus"
+        awslogs-create-group: "true"
+
+  grafana:
+    image: grafana/grafana:9.5.1
+    restart: unless-stopped
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - crypto-network
+    depends_on:
+      - prometheus
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "/crypto-trading-bot/grafana"
+        awslogs-create-group: "true"
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    depends_on:
+      - nginx
+
+networks:
+  crypto-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

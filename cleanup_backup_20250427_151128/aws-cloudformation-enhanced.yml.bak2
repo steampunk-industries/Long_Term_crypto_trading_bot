@@ -1,0 +1,515 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Enhanced CloudFormation template for deploying Crypto Trading Bot to AWS with proper scaling and security'
+
+Parameters:
+  EnvironmentName:
+    Description: The environment name
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  FallbackSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: "Secondary subnet ID for RDS DB subnet group (must be in a different AZ than primary subnet)"
+
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
+
+  VpcId:
+    Description: VPC ID where the resources will be created
+    Type: AWS::EC2::VPC::Id
+    ConstraintDescription: Must be the ID of an existing VPC
+
+  SubnetId:
+    Description: Subnet ID where EC2 and RDS will be launched
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: Must be the ID of an existing subnet
+
+  DockerImageRepo:
+    Description: ECR repository URI for the docker images
+    Type: String
+
+  DBPassword:
+    Description: Database password
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    ConstraintDescription: Must be at least 8 characters
+
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+      - m5.large
+      - m5.xlarge
+    ConstraintDescription: Must be a valid EC2 instance type
+
+  DatabaseInstanceClass:
+    Description: Database instance class
+    Type: String
+    Default: db.t3.small
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+      - db.m5.large
+    ConstraintDescription: Must be a valid RDS instance class
+
+  DomainName:
+    Description: Domain name for the application
+    Type: String
+    Default: steampunk.holdings
+
+  EnableSSL:
+    Description: Whether to enable SSL
+    Type: String
+    Default: true
+    AllowedValues:
+      - true
+      - false
+
+  InitialBTCPrice:
+    Description: Initial BTC price for simulation
+    Type: Number
+    Default: 84000
+
+  ApiKey:
+    Description: API key for dashboard authentication
+    Type: String
+    NoEcho: true
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0f3c7d07486cad139  # Ubuntu 22.04 LTS in us-east-1
+    us-east-2:
+      AMI: ami-024e6efaf93d85776  # Ubuntu 22.04 LTS in us-east-2
+    us-west-1:
+      AMI: ami-0f8e81a3da6e2510a  # Ubuntu 22.04 LTS in us-west-1
+    us-west-2:
+      AMI: ami-03f65b8614a860c29  # Ubuntu 22.04 LTS in us-west-2
+    eu-west-1:
+      AMI: ami-01dd271720c1ba44f  # Ubuntu 22.04 LTS in eu-west-1
+    eu-central-1:
+      AMI: ami-0d497a49e7d359666  # Ubuntu 22.04 LTS in eu-central-1
+    ap-northeast-1:
+      AMI: ami-0d52744d6551d851e  # Ubuntu 22.04 LTS in ap-northeast-1
+    ap-southeast-1:
+      AMI: ami-0df7a207adb9748c7  # Ubuntu 22.04 LTS in ap-southeast-1
+    ap-southeast-2:
+      AMI: ami-0310483fb2b488153  # Ubuntu 22.04 LTS in ap-southeast-2
+Conditions:
+  IsProduction: !Equals [!Ref EnvironmentName, 'prod']
+
+
+Resources:
+  # ====================
+  # IAM Resources
+  # ====================
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  # ====================
+  # Security Groups
+  # ====================
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS access
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5010
+          CidrIp: 0.0.0.0/0
+          Description: App ports
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: 0.0.0.0/0
+          Description: Prometheus
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+          Description: Grafana
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-ec2-sg
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: PostgreSQL access from EC2
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-db-sg
+
+  # ====================
+  # EC2 Resources
+  # ====================
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # Update system
+          apt-get update
+          apt-get upgrade -y
+          
+          # Install dependencies
+          apt-get install -y apt-transport-https ca-certificates curl software-properties-common jq unzip
+
+          # Install Docker
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+          add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+          apt-get update
+          apt-get install -y docker-ce docker-ce-cli containerd.io
+
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/download/v2.16.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # Install AWS CLI v2
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          ./aws/install
+          
+          # Create app directory
+          mkdir -p /app
+          cd /app
+          
+          # Login to Amazon ECR
+          aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${DockerImageRepo}
+          
+          # Set up the .env file
+          cat > .env << EOL
+          # Environment configuration
+          PAPER_TRADING=true
+          TRADING_EXCHANGE=multi
+          TRADING_SYMBOL=BTC/USDT
+          INITIAL_CAPITAL=10000
+          INITIAL_BTC_PRICE=${InitialBTCPrice}
+          REAL_WORLD_PRICES=true
+          USE_MULTI_EXCHANGE=true
+
+          # Database configuration
+          DB_HOST=${DBInstance.Endpoint.Address}
+          DB_PORT=5432
+          DB_NAME=crypto_bot
+          DB_USER=postgres
+          DB_PASSWORD=${DBPassword}
+          USE_SQLITE=false
+
+          # API Key for dashboard
+          API_KEY=${ApiKey}
+
+          # Dashboard configuration
+          DASHBOARD_HOST=0.0.0.0
+          DASHBOARD_PORT=5003
+          DOMAIN_NAME=${DomainName}
+          ENABLE_SSL=${EnableSSL}
+          DASHBOARD_USERNAME=admin
+          DASHBOARD_PASSWORD=${DBPassword}
+
+          # AWS configuration
+          AWS_REGION=${AWS::Region}
+          EOL
+
+          # Set up docker-compose file
+          cat > docker-compose.yml << EOL
+          version: '3.8'
+
+          services:
+            trading-bot:
+              image: ${DockerImageRepo}:latest
+              restart: always
+              depends_on:
+                - db
+              networks:
+                - bot-network
+              env_file: .env
+              volumes:
+                - ./data:/app/data
+                - ./logs:/app/logs
+
+            dashboard:
+              image: ${DockerImageRepo}:dashboard
+              restart: always
+              depends_on:
+                - trading-bot
+              ports:
+                - "5003:5003"
+              networks:
+                - bot-network
+              env_file: .env
+              volumes:
+                - ./data:/app/data
+                - ./logs:/app/logs
+
+            nginx:
+              image: nginx:alpine
+              restart: always
+              ports:
+                - "80:80"
+                - "443:443"
+              volumes:
+                - ./nginx:/etc/nginx/conf.d
+                - ./certbot/www:/var/www/certbot
+                - ./certbot/conf:/etc/letsencrypt
+              depends_on:
+                - dashboard
+              networks:
+                - bot-network
+
+            certbot:
+              image: certbot/certbot
+              volumes:
+                - ./certbot/www:/var/www/certbot
+                - ./certbot/conf:/etc/letsencrypt
+              entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+            prometheus:
+              image: prom/prometheus
+              restart: always
+              ports:
+                - "9090:9090"
+              volumes:
+                - ./prometheus:/etc/prometheus
+              networks:
+                - bot-network
+
+            grafana:
+              image: grafana/grafana
+              restart: always
+              ports:
+                - "3000:3000"
+              depends_on:
+                - prometheus
+              networks:
+                - bot-network
+              environment:
+                - GF_SECURITY_ADMIN_USER=admin
+                - GF_SECURITY_ADMIN_PASSWORD=${DBPassword}
+
+          networks:
+            bot-network:
+              driver: bridge
+          EOL
+
+          # Create Nginx configuration for domain
+          mkdir -p nginx
+          cat > nginx/default.conf << EOL
+          server {
+              listen 80;
+              server_name ${DomainName} www.${DomainName};
+              server_tokens off;
+
+              location /.well-known/acme-challenge/ {
+                  root /var/www/certbot;
+              }
+
+              location / {
+                  return 301 https://\$host\$request_uri;
+              }
+          }
+
+          server {
+              listen 443 ssl;
+              server_name ${DomainName} www.${DomainName};
+              server_tokens off;
+
+              ssl_certificate /etc/letsencrypt/live/${DomainName}/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/${DomainName}/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+              location / {
+                  proxy_pass http://dashboard:5003;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+          }
+          EOL
+
+          # Create directories for certbot
+          mkdir -p certbot/www
+          mkdir -p certbot/conf
+
+          # Create Prometheus configuration
+          mkdir -p prometheus
+          cat > prometheus/prometheus.yml << EOL
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'crypto-bot'
+              static_configs:
+                - targets: ['dashboard:5003']
+          EOL
+
+          # Start Docker Compose
+          docker-compose up -d
+
+          # Set up CloudWatch agent
+          wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+          dpkg -i amazon-cloudwatch-agent.deb
+          
+          # Configure CloudWatch agent
+          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOL
+          {
+              "agent": {
+                  "metrics_collection_interval": 60,
+                  "run_as_user": "root"
+              },
+              "logs": {
+                  "logs_collected": {
+                      "files": {
+                          "collect_list": [
+                              {
+                                  "file_path": "/app/logs/crypto_bot.log",
+                                  "log_group_name": "/crypto-bot/${EnvironmentName}/app",
+                                  "log_stream_name": "{instance_id}"
+                              },
+                              {
+                                  "file_path": "/var/log/syslog",
+                                  "log_group_name": "/crypto-bot/${EnvironmentName}/system",
+                                  "log_stream_name": "{instance_id}"
+                              }
+                          ]
+                      }
+                  }
+              },
+              "metrics": {
+                  "metrics_collected": {
+                      "disk": {
+                          "measurement": [
+                              "used_percent"
+                          ],
+                          "resources": [
+                              "/"
+                          ]
+                      },
+                      "mem": {
+                          "measurement": [
+                              "mem_used_percent"
+                          ]
+                      }
+                  },
+                  "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"
+                  }
+              }
+          }
+          EOL
+          
+          # Start CloudWatch agent
+          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-ec2
+
+  # ====================
+  # RDS Resources
+  # ====================
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-crypto-bot-db
+      AllocatedStorage: 20
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      Engine: postgres
+      EngineVersion: 14.5
+      MasterUsername: postgres
+      MasterUserPassword: !Ref DBPassword
+      BackupRetentionPeriod: 7
+      MultiAZ: !If [IsProduction,, true,, false]
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-db
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for crypto bot database
+      SubnetIds:
+        - !Ref SubnetId
+        - !Ref FallbackSubnetId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-crypto-bot-db-subnet-group
+
+  # ====================
+  # Auto-detect a second subnet in the same VPC for RDS subnet group
+  # ====================

@@ -1,0 +1,17 @@
+{
+  "steampunk.holdings": {
+    "url": "https://api.steampunk.holdings/v1/health",
+    "headers": {},
+    "timeout": 10,
+    "success_codes": [
+      200,
+      204
+    ],
+    "last_check": 1746393683.3479228,
+    "status": "down",
+    "since": "2025-05-04T21:21:23.347923",
+    "failure_count": 19,
+    "uptime_seconds": 0,
+    "last_error": "Connection error: HTTPSConnectionPool(host='api.steampunk.holdings', port=443): Max retries exceeded with url: /v1/sentiment?symbol=BTC%2FUSDT (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7b11e781fc70>: Failed to resolve 'api.steampunk.holdings' ([Errno -2] Name or service not known)\"))"
+  }
+}

@@ -1,0 +1,283 @@
+name: CI/CD Pipeline for Crypto Trading Bot
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to production after tests'
+        required: false
+        default: 'false'
+      strategy:
+        description: 'Strategy to validate'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - low_risk
+          - medium_risk
+          - high_risk
+          - adaptive_mean_reversion
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          pytest -xvs tests/
+      
+      - name: Generate test coverage report
+        run: |
+          pytest --cov=src/ tests/ --cov-report=xml
+      
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  validate-strategies:
+    name: Validate Trading Strategies
+    runs-on: ubuntu-latest
+    needs: test
+    
+    strategy:
+      matrix:
+        strategy: ${{ fromJSON(github.event.inputs.strategy == 'all' && '["low_risk", "medium_risk", "high_risk", "adaptive_mean_reversion"]' || format('["{}"]', github.event.inputs.strategy || 'adaptive_mean_reversion')) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install matplotlib tabulate
+      
+      - name: Validate strategy performance
+        run: |
+          mkdir -p validation_results
+          python scripts/validate_strategy_performance.py \
+            --strategy ${{ matrix.strategy }} \
+            --symbols "BTC/USDT,ETH/USDT" \
+            --days 30 \
+            --min-profit 2.0 \
+            --min-sharpe 0.8 \
+            --max-drawdown 15.0 \
+            --output-dir validation_results
+      
+      - name: Upload validation results
+        uses: actions/upload-artifact@v3
+        with:
+          name: validation-results-${{ matrix.strategy }}
+          path: validation_results/
+          retention-days: 14
+
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, validate-strategies]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build Base Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.microservices
+          push: false
+          tags: crypto_trading_base:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build API Gateway
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.microservices
+          push: false
+          tags: crypto_trading_api_gateway:latest
+          load: true
+          build-args: |
+            BASE_IMAGE=crypto_trading_base
+            SERVICE_MODULE=microservices.api_gateway
+      
+      - name: Build Market Data Service
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.microservices
+          push: false
+          tags: crypto_trading_market_data:latest
+          load: true
+          build-args: |
+            BASE_IMAGE=crypto_trading_base
+            SERVICE_MODULE=microservices.market_data_service
+      
+      - name: Build Trading Services
+        run: |
+          for strategy in low_risk medium_risk high_risk adaptive_mean_reversion; do
+            docker build \
+              --build-arg BASE_IMAGE=crypto_trading_base \
+              --build-arg SERVICE_MODULE=microservices.trading_service \
+              --build-arg "SERVICE_ARGS=--strategy ${strategy}" \
+              -t crypto_trading_${strategy}:latest \
+              -f Dockerfile.microservices .
+          done
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    
+    environment:
+      name: staging
+      url: https://staging-api.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+      
+      - name: Copy deployment files
+        run: |
+          mkdir -p deploy
+          cp docker-compose-microservices.yml deploy/
+          cp .env.example deploy/.env
+          
+          # Update environment variables for staging
+          sed -i 's/DEBUG=true/DEBUG=false/' deploy/.env
+          sed -i 's/ENVIRONMENT=development/ENVIRONMENT=staging/' deploy/.env
+          
+          # Create deployment script
+          cat > deploy/deploy.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          
+          # Pull latest images
+          docker-compose -f docker-compose-microservices.yml pull
+          
+          # Start services
+          docker-compose -f docker-compose-microservices.yml down || true
+          docker-compose -f docker-compose-microservices.yml up -d
+          
+          echo "Deployment completed successfully"
+          EOF
+          
+          chmod +x deploy/deploy.sh
+      
+      - name: Deploy to staging server
+        run: |
+          scp -o StrictHostKeyChecking=no -r deploy/* ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}:~/crypto_trading/
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} "cd ~/crypto_trading && ./deploy.sh"
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
+    
+    environment:
+      name: production
+      url: https://api.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+      
+      - name: Copy deployment files
+        run: |
+          mkdir -p deploy
+          cp docker-compose-microservices.yml deploy/
+          cp .env.example deploy/.env
+          
+          # Update environment variables for production
+          sed -i 's/DEBUG=true/DEBUG=false/' deploy/.env
+          sed -i 's/ENVIRONMENT=development/ENVIRONMENT=production/' deploy/.env
+          
+          # Create deployment script
+          cat > deploy/deploy.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          
+          # Pull latest images
+          docker-compose -f docker-compose-microservices.yml pull
+          
+          # Start services
+          docker-compose -f docker-compose-microservices.yml down || true
+          docker-compose -f docker-compose-microservices.yml up -d
+          
+          echo "Deployment completed successfully"
+          EOF
+          
+          chmod +x deploy/deploy.sh
+      
+      - name: Deploy to production server
+        run: |
+          scp -o StrictHostKeyChecking=no -r deploy/* ${{ secrets.PRODUCTION_SERVER_USER }}@${{ secrets.PRODUCTION_SERVER_HOST }}:~/crypto_trading/
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER_USER }}@${{ secrets.PRODUCTION_SERVER_HOST }} "cd ~/crypto_trading && ./deploy.sh"
+
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          channel-id: 'crypto-trading-alerts'
+          slack-message: |
+            :rocket: Deployment Status: ${{ job.status == 'success' && ':white_check_mark: Success' || ':x: Failure' }}
+            :git: Branch: ${{ github.ref_name }}
+            :computer: Commit: ${{ github.sha }}
+            :link: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
