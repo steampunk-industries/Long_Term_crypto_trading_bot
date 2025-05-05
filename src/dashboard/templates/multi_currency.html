@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Multi-Currency Trading Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Trading Bot Status</h6>
+                            <p>
+                                {% if bot_status.active %}
+                                <span class="badge badge-success">Active</span>
+                                {% else %}
+                                <span class="badge badge-secondary">Inactive</span>
+                                {% endif %}
+                                <span class="ml-2">Max Positions: {{ bot_status.max_positions|default(3) }}</span>
+                                <span class="ml-2">Quote Currency: {{ bot_status.quote_currency|default('USDT') }}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Active Positions: {{ active_positions|length }}</h6>
+                            <div class="progress mb-2">
+                                {% set position_percent = (active_positions|length / bot_status.max_positions|default(3) * 100)|int %}
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ position_percent }}%" 
+                                    aria-valuenow="{{ active_positions|length }}" aria-valuemin="0" aria-valuemax="{{ bot_status.max_positions|default(3) }}">
+                                    {{ active_positions|length }}/{{ bot_status.max_positions|default(3) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Trading Opportunities -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">Top Trading Opportunities</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Symbol</th>
+                                    <th>Exchange</th>
+                                    <th>Signal</th>
+                                    <th>Confidence</th>
+                                    <th>Price</th>
+                                    <th>24h Change</th>
+                                    <th>Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if opportunities %}
+                                    {% for opportunity in opportunities %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td><strong>{{ opportunity.symbol }}</strong></td>
+                                        <td>{{ opportunity.exchange }}</td>
+                                        <td>
+                                            {% if opportunity.signal_type == 'buy' %}
+                                            <span class="badge badge-success">BUY</span>
+                                            {% elif opportunity.signal_type == 'sell' %}
+                                            <span class="badge badge-danger">SELL</span>
+                                            {% else %}
+                                            <span class="badge badge-secondary">HOLD</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="progress" style="height: 20px;">
+                                                {% set confidence_percent = (opportunity.confidence * 100)|int %}
+                                                {% if opportunity.signal_type == 'buy' %}
+                                                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ confidence_percent }}%">
+                                                        {{ confidence_percent }}%
+                                                    </div>
+                                                {% elif opportunity.signal_type == 'sell' %}
+                                                    <div class="progress-bar bg-danger" role="progressbar" style="width: {{ confidence_percent }}%">
+                                                        {{ confidence_percent }}%
+                                                    </div>
+                                                {% else %}
+                                                    <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ confidence_percent }}%">
+                                                        {{ confidence_percent }}%
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>${{ opportunity.price|round(2) }}</td>
+                                        <td>
+                                            {% if opportunity.price_change > 0 %}
+                                            <span class="text-success">+{{ opportunity.price_change|round(2) }}%</span>
+                                            {% elif opportunity.price_change < 0 %}
+                                            <span class="text-danger">{{ opportunity.price_change|round(2) }}%</span>
+                                            {% else %}
+                                            <span>{{ opportunity.price_change|round(2) }}%</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ opportunity.timestamp.strftime('%H:%M:%S') }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="8" class="text-center">No trading opportunities found.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exchange Price Comparison -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="card-title mb-0">Real-Time Exchange Price Comparison</h5>
+                </div>
+                <div class="card-body">
+                    {% if exchange_prices %}
+                        {% for symbol, prices in exchange_prices.items() %}
+                            <h6 class="mt-3 mb-2">{{ symbol }} Prices</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>Exchange</th>
+                                            <th>Price</th>
+                                            <th>24h Volume</th>
+                                            <th>24h Change</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for exchange, data in prices.items() %}
+                                            <tr>
+                                                <td><strong>{{ exchange|capitalize }}</strong></td>
+                                                <td>${{ data.price|round(2) }}</td>
+                                                <td>{{ data.volume|round(2) }}</td>
+                                                <td>
+                                                    {% if data.change > 0 %}
+                                                        <span class="text-success">+{{ data.change|round(2) }}%</span>
+                                                    {% elif data.change < 0 %}
+                                                        <span class="text-danger">{{ data.change|round(2) }}%</span>
+                                                    {% else %}
+                                                        <span>{{ data.change|round(2) }}%</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <!-- Price arbitrage section -->
+                            {% if prices|length > 1 %}
+                                {% set min_price = namespace(value=999999999, exchange='') %}
+                                {% set max_price = namespace(value=0, exchange='') %}
+                                
+                                {% for exchange, data in prices.items() %}
+                                    {% if data.price < min_price.value %}
+                                        {% set min_price.value = data.price %}
+                                        {% set min_price.exchange = exchange %}
+                                    {% endif %}
+                                    
+                                    {% if data.price > max_price.value %}
+                                        {% set max_price.value = data.price %}
+                                        {% set max_price.exchange = exchange %}
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if min_price.value != max_price.value %}
+                                    {% set price_diff = max_price.value - min_price.value %}
+                                    {% set percent_diff = (price_diff / min_price.value * 100)|round(2) %}
+                                    
+                                    {% if percent_diff > 0.5 %}
+                                        <div class="alert alert-success mt-2">
+                                            <strong>Arbitrage opportunity:</strong> {{ percent_diff }}% price difference between {{ min_price.exchange|capitalize }} (${{ min_price.value|round(2) }}) and {{ max_price.exchange|capitalize }} (${{ max_price.value|round(2) }})
+                                        </div>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                            
+                            <hr class="mt-3 mb-3">
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">
+                            No exchange price data available at this time.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Positions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0">Active Positions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Exchange</th>
+                                    <th>Entry Price</th>
+                                    <th>Current Price</th>
+                                    <th>Quantity</th>
+                                    <th>Value</th>
+                                    <th>P&L</th>
+                                    <th>Entry Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if active_positions %}
+                                    {% for position in active_positions %}
+                                    <tr>
+                                        <td><strong>{{ position.symbol }}</strong></td>
+                                        <td>{{ position.exchange }}</td>
+                                        <td>${{ position.entry_price|round(2) }}</td>
+                                        <td>${{ position.current_price|round(2) }}</td>
+                                        <td>{{ position.quantity|round(6) }}</td>
+                                        <td>${{ position.value|round(2) }}</td>
+                                        <td>
+                                            {% set pnl_percent = ((position.current_price - position.entry_price) / position.entry_price * 100)|round(2) %}
+                                            {% if pnl_percent > 0 %}
+                                            <span class="text-success">+{{ pnl_percent }}%</span>
+                                            {% elif pnl_percent < 0 %}
+                                            <span class="text-danger">{{ pnl_percent }}%</span>
+                                            {% else %}
+                                            <span>{{ pnl_percent }}%</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ position.entry_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="8" class="text-center">No active positions.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -3,6 +3,24 @@
 {% block content %}
 <h1 class="mb-4">Trades</h1>
 
+<!-- Paper Trading Indicator -->
+<div class="alert alert-info mb-4">
+    <div class="d-flex align-items-center">
+        <div class="me-3">
+            <i class="fas fa-flask fa-2x"></i>
+        </div>
+        <div>
+            <h5 class="mb-1">Paper Trading Mode</h5>
+            <p class="mb-0">
+                Trading in simulation mode with virtual funds. No real money is being used.
+                <span class="badge rounded-pill bg-dark ms-2" title="Trades using this mode show the 'Paper' badge">
+                    <i class="fas fa-flask me-1"></i>Paper
+                </span>
+            </p>
+        </div>
+    </div>
+</div>
+
 <!-- Trade Stats -->
 <div class="row">
     <div class="col-md-3 mb-4">
@@ -12,6 +30,10 @@
             </div>
             <div class="card-body text-center">
                 <h2 class="display-5">{{ trade_stats.total }}</h2>
+                <div class="small text-muted">
+                    Paper: {{ trade_stats.paper_trades|default(0) }} &bull; 
+                    Real: {{ trade_stats.real_trades|default(0) }}
+                </div>
             </div>
         </div>
     </div>
@@ -51,6 +73,49 @@
     </div>
 </div>
 
+<!-- Trade Controls -->
+<div class="card mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Trade Filters</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label for="tradeType">Trade Type</label>
+                    <div class="btn-group d-flex" role="group" id="tradeTypeFilter">
+                        <button type="button" class="btn btn-outline-primary active" data-filter="all">All</button>
+                        <button type="button" class="btn btn-outline-success" data-filter="buy">Buy</button>
+                        <button type="button" class="btn btn-outline-danger" data-filter="sell">Sell</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label for="tradingMode">Trading Mode</label>
+                    <div class="btn-group d-flex" role="group" id="tradingModeFilter">
+                        <button type="button" class="btn btn-outline-primary active" data-filter="all">All</button>
+                        <button type="button" class="btn btn-outline-info" data-filter="paper">Paper</button>
+                        <button type="button" class="btn btn-outline-warning" data-filter="real">Real</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group mb-3">
+                    <label for="exchangeFilter">Exchange</label>
+                    <select class="form-control" id="exchangeFilter">
+                        <option value="all">All Exchanges</option>
+                        {% set exchanges = trades|map(attribute='exchange')|list|unique %}
+                        {% for exchange in exchanges %}
+                            <option value="{{ exchange }}">{{ exchange }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Trade Table -->
 <div class="card mb-4">
     <div class="card-header bg-dark text-white">
@@ -59,7 +124,7 @@
     <div class="card-body">
         {% if trades %}
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
+            <table class="table table-striped table-hover" id="tradesTable">
                 <thead>
                     <tr>
                         <th>Timestamp</th>
@@ -72,11 +137,12 @@
                         <th>Total</th>
                         <th>Fee</th>
                         <th>Strategy</th>
+                        <th>Mode</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for trade in trades %}
-                    <tr>
+                    <tr class="trade-row" data-side="{{ trade.side }}" data-mode="{{ 'paper' if trade.is_paper else 'real' }}" data-exchange="{{ trade.exchange }}">
                         <td>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>{{ trade.symbol }}</td>
                         <td>{{ trade.exchange }}</td>
@@ -89,6 +155,17 @@
                         <td>${{ "%.2f"|format(trade.cost) }}</td>
                         <td>${{ "%.2f"|format(trade.fee) }}</td>
                         <td>{{ trade.strategy or 'N/A' }}</td>
+                        <td>
+                            {% if trade.is_paper %}
+                            <span class="badge rounded-pill bg-dark">
+                                <i class="fas fa-flask me-1"></i>Paper
+                            </span>
+                            {% else %}
+                            <span class="badge rounded-pill bg-warning text-dark">
+                                <i class="fas fa-coins me-1"></i>Real
+                            </span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -101,4 +178,8 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/trades.js') }}"></script>
 {% endblock %}

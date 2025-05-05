@@ -133,13 +133,32 @@ def init_db():
             os.makedirs(data_dir, exist_ok=True)
             
             db_path = os.path.join(data_dir, 'crypto_bot.db')
-            
-            # Remove any existing DB file
-            if os.path.exists(db_path):
-                os.remove(db_path)
-                logger.info(f"Removed existing database file: {db_path}")
-            
             db_url = f'sqlite:///{db_path}'
+            
+            # Ensure database file has proper permissions if it exists
+            create_new_db = False
+            if os.path.exists(db_path):
+                try:
+                    # Try to make it writable if it exists
+                    if not os.access(db_path, os.W_OK):
+                        os.chmod(db_path, 0o666)  # Make writable by all (rw-rw-rw-)
+                        logger.info(f"Updated permissions for existing database file: {db_path}")
+                except Exception as e:
+                    logger.warning(f"Could not update permissions on existing database: {e}")
+                    create_new_db = True
+            else:
+                create_new_db = True
+            
+            # Create a new database file if needed
+            if create_new_db:
+                logger.info(f"Creating new database file: {db_path}")
+                # When creating a new file, ensure proper permissions
+                try:
+                    with open(db_path, 'w') as f:
+                        pass
+                    os.chmod(db_path, 0o666)  # Make writable by all (rw-rw-rw-)
+                except Exception as e:
+                    logger.error(f"Failed to create database file with proper permissions: {e}")
             
             # For SQLite, connect_args is needed for multi-threaded access
             engine = create_engine(

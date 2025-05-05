@@ -752,3 +752,73 @@ class GeminiExchange(BaseExchange):
         except Exception as e:
             logger.error(f"Error getting historical data for {symbol}: {e}")
             return pd.DataFrame()
+            
+    def get_top_symbols(self, limit: int = 10, quote: str = "USDT") -> List[str]:
+        """
+        Get the top trading pairs by volume for Gemini exchange.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency (e.g., "USDT")
+            
+        Returns:
+            List of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"])
+        """
+        try:
+            # Get all available symbols
+            url = "https://api.gemini.com/v1/symbols"
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            all_symbols = response.json()
+            
+            # Gemini uses lowercase symbols without slashes
+            # Filter by quote currency (e.g., btcusd for BTC/USD)
+            quote_lower = quote.lower()
+            
+            # Gemini primarily uses USD, so if USDT is requested and no USDT pairs exist,
+            # we'll fallback to USD
+            filtered_symbols = [s for s in all_symbols if s.endswith(quote_lower)]
+            
+            # If no symbols found with the requested quote currency and it's USDT,
+            # try USD as a fallback
+            if not filtered_symbols and quote.upper() == "USDT":
+                quote_lower = "usd"
+                filtered_symbols = [s for s in all_symbols if s.endswith(quote_lower)]
+            
+            # Collect volume information for sorting
+            symbols_with_volume = []
+            for symbol in filtered_symbols[:min(25, len(filtered_symbols))]:  # Limit API calls
+                try:
+                    # Get ticker for volume info
+                    ticker_url = f"https://api.gemini.com/v1/pubticker/{symbol}"
+                    ticker_response = requests.get(ticker_url, timeout=3)
+                    ticker_response.raise_for_status()
+                    ticker = ticker_response.json()
+                    
+                    # Extract volume
+                    volume = float(ticker.get("volume", {}).get("USD", 0))
+                    
+                    # Convert symbol to standard format (e.g., "btcusd" to "BTC/USD")
+                    # Extract base and quote parts
+                    quote_len = len(quote_lower)
+                    base = symbol[:-quote_len].upper()
+                    quote_currency = quote_lower.upper()
+                    formatted_symbol = f"{base}/{quote_currency}"
+                    
+                    symbols_with_volume.append((formatted_symbol, volume))
+                except Exception as e:
+                    logger.debug(f"Could not get volume for {symbol}: {e}")
+            
+            # Sort by volume and limit
+            sorted_symbols = sorted(symbols_with_volume, key=lambda x: x[1], reverse=True)
+            result = [symbol for symbol, _ in sorted_symbols[:limit]]
+            
+            logger.info(f"Retrieved {len(result)} top symbols from Gemini with quote {quote}")
+            return result
+        except Exception as e:
+            logger.warning(f"Failed to fetch Gemini top symbols: {e}")
+            # Return default pairs based on the requested quote currency
+            if quote == "USDT":
+                return ["BTC/USD", "ETH/USD"]  # Gemini primarily uses USD
+            else:
+                return [f"BTC/{quote}", f"ETH/{quote}"]

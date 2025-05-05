@@ -250,3 +250,17 @@ class BaseExchange(ABC):
         position_size = max_position_value / current_price
 
         return position_size
+        
+    @abstractmethod
+    def get_top_symbols(self, limit: int = 10, quote: str = "USDT") -> List[str]:
+        """
+        Get the top trading pairs by volume for the specified quote currency.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency (e.g., "USDT")
+            
+        Returns:
+            List of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"])
+        """
+        pass

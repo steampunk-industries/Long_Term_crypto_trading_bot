@@ -161,6 +161,33 @@ class MultiExchange(BaseExchange):
         
         for name, exchange in self.exchanges.items():
             try:
+                # Check if this is a symbol that is known to be problematic for this exchange
+                if name == "gemini" and not self._symbol_supported_on_gemini(symbol):
+                    logger.debug(f"Skipping {symbol} for gemini - not supported")
+                    continue
+                    
+                # Special handling for exchanges that require API keys
+                if name == "coinbase" and (not hasattr(exchange, 'apiKey') or not exchange.apiKey):
+                    # Try to use public API methods instead for coinbase
+                    try:
+                        # For coinbase, try to use the public API
+                        symbol_parts = symbol.split('/')
+                        if len(symbol_parts) == 2:
+                            # Format like 'BTC-USDT' for coinbase public API
+                            cb_symbol = f"{symbol_parts[0]}-{symbol_parts[1]}"
+                            public_data = self._get_coinbase_public_price(cb_symbol)
+                            if public_data and 'price' in public_data:
+                                prices.append(float(public_data['price']))
+                                # Estimate bid/ask as slight offsets from price
+                                price = float(public_data['price'])
+                                bids.append(price * 0.999)  # Estimate bid as 0.1% below price
+                                asks.append(price * 1.001)  # Estimate ask as 0.1% above price
+                                volumes.append(0)  # No volume data in public API
+                        continue
+                    except Exception as cb_err:
+                        logger.debug(f"Failed to get public data for {symbol} from coinbase: {cb_err}")
+                        continue
+                
                 ticker = exchange.fetch_ticker(symbol)
                 
                 if ticker and "last" in ticker and ticker["last"]:
@@ -177,7 +204,60 @@ class MultiExchange(BaseExchange):
                 
             except Exception as e:
                 logger.debug(f"Failed to get ticker from {name}: {e}")
+    
+    def _symbol_supported_on_gemini(self, symbol: str) -> bool:
+        """
+        Check if a symbol is supported on Gemini exchange
         
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTC/USDT')
+            
+        Returns:
+            bool: True if supported, False otherwise
+        """
+        # Common symbols not supported on Gemini
+        unsupported = [
+            'ADA/USDT', 'SOL/USDT', 'DOT/USDT', 'AVAX/USDT', 
+            'MATIC/USDT', 'LINK/USDT', 'XRP/USDT', 'DOGE/USDT'
+        ]
+        
+        if symbol in unsupported:
+            return False
+            
+        # Try to use a more dynamic approach by checking previously failed symbols
+        if not hasattr(self, '_gemini_unsupported_symbols'):
+            self._gemini_unsupported_symbols = set(unsupported)
+        
+        if symbol in self._gemini_unsupported_symbols:
+            return False
+            
+        return True
+        
+    def _get_coinbase_public_price(self, symbol: str) -> Dict:
+        """
+        Get price from Coinbase public API
+        
+        Args:
+            symbol: Trading pair symbol with dash (e.g., 'BTC-USDT')
+            
+        Returns:
+            Dict: Price data or empty dict if failed
+        """
+        try:
+            # Use requests to fetch from public API
+            import requests
+            url = f"https://api.coinbase.com/v2/prices/{symbol}/spot"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data', {})
+            return {}
+        except Exception as e:
+            logger.debug(f"Error fetching Coinbase public price for {symbol}: {e}")
+            return {}
+            
+    def get_ticker(self, symbol: str) -> Dict:
+        """Continued from above - fixes indentation error in the original implementation"""
         # Calculate aggregated values
         if not prices:
             logger.warning(f"Failed to get ticker for {symbol} from any exchange")
@@ -423,6 +503,74 @@ class MultiExchange(BaseExchange):
         ]
         return open_orders
     
+    def get_top_symbols(self, limit: int = 10, quote: str = 'USDT') -> List[str]:
+        """
+        Get the top trading pairs by volume for a specific quote currency.
+        This method is required by the BaseExchange abstract class.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency to filter by (e.g., 'USDT')
+            
+        Returns:
+            List[str]: List of symbol names sorted by volume
+        """
+        # Try to get markets from all exchanges
+        all_symbols = set()
+        symbol_volumes = {}
+        
+        for name, exchange in self.exchanges.items():
+            try:
+                # Get all markets for the exchange
+                markets = exchange.fetch_markets()
+                
+                # Filter by quote currency
+                filtered_markets = [
+                    market for market in markets 
+                    if market['quote'] == quote and market['active']
+                ]
+                
+                # Get symbols
+                symbols = [market['symbol'] for market in filtered_markets]
+                all_symbols.update(symbols)
+                
+                # Get volumes for each symbol
+                for symbol in symbols:
+                    try:
+                        ticker = exchange.fetch_ticker(symbol)
+                        if ticker and 'volume' in ticker and ticker['volume']:
+                            if symbol not in symbol_volumes:
+                                symbol_volumes[symbol] = 0
+                            symbol_volumes[symbol] += ticker['volume']
+                    except Exception as e:
+                        logger.debug(f"Failed to get ticker for {symbol} from {name}: {e}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to get markets from {name}: {e}")
+        
+        # Sort symbols by volume
+        sorted_symbols = sorted(
+            symbol_volumes.keys(), 
+            key=lambda s: symbol_volumes.get(s, 0), 
+            reverse=True
+        )
+        
+        # If we don't have enough symbols with volume data, add some defaults
+        if len(sorted_symbols) < limit:
+            # Common crypto symbols
+            default_symbols = [
+                f"BTC/{quote}", f"ETH/{quote}", f"SOL/{quote}", f"XRP/{quote}", 
+                f"ADA/{quote}", f"DOT/{quote}", f"BNB/{quote}", f"AVAX/{quote}", 
+                f"MATIC/{quote}", f"LINK/{quote}", f"DOGE/{quote}", f"UNI/{quote}"
+            ]
+            
+            # Add defaults not already in the list
+            for symbol in default_symbols:
+                if symbol not in sorted_symbols and symbol in all_symbols:
+                    sorted_symbols.append(symbol)
+        
+        return sorted_symbols[:limit]
+        
     def clear_cache(self):
         """
         Clear all caches.

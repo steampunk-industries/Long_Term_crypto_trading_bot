@@ -54,8 +54,20 @@ def run_dashboard():
     host = config.DASHBOARD_HOST
     port = config.DASHBOARD_PORT
     
-    logger.info(f"Starting dashboard on {host}:{port}")
-    app.run(host=host, port=port, debug=True)
+    # Get certificate paths
+    cert_path = os.path.join(os.getcwd(), 'certificates/dashboard.crt')
+    key_path = os.path.join(os.getcwd(), 'certificates/dashboard.key')
+    
+    # Check if certificates exist
+    use_ssl = os.path.exists(cert_path) and os.path.exists(key_path)
+    
+    if use_ssl:
+        logger.info(f"Starting dashboard with HTTPS on {host}:{port}")
+        app.run(host=host, port=port, debug=True, ssl_context=(cert_path, key_path))
+    else:
+        logger.warning(f"SSL certificates not found, starting dashboard without HTTPS on {host}:{port}")
+        logger.warning(f"Expected certificates at {cert_path} and {key_path}")
+        app.run(host=host, port=port, debug=True)
 
 if __name__ == '__main__':
     run_dashboard()

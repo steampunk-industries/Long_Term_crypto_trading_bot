@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Tuple
 import pandas as pd
+import json
 from loguru import logger
 
 from src.exchanges.base_exchange import BaseExchange
@@ -192,6 +193,11 @@ class BaseStrategy(ABC):
             ticker = self.exchange.get_ticker(self.symbol)
             current_price = ticker['last']
             
+            # Add trade_id to metadata if it exists
+            metadata_copy = metadata.copy()  # Create a copy to avoid modifying the original
+            if trade_id is not None:
+                metadata_copy['trade_id'] = trade_id
+            
             # Create the signal log
             signal_log = SignalLog(
                 symbol=self.symbol,
@@ -200,8 +206,7 @@ class BaseStrategy(ABC):
                 confidence=confidence,
                 price=current_price,
                 executed=(trade_id is not None),
-                trade_id=trade_id,
-                signal_metadata=str(metadata)
+                signal_metadata=json.dumps(metadata_copy)  # Use json.dumps for proper serialization
             )
             
             # Save the signal log to the database

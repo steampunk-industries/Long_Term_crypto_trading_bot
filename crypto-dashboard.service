@@ -7,7 +7,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/Long_Term_crypto_trading_bot
 Environment=PYTHONPATH=/home/ubuntu/Long_Term_crypto_trading_bot
 Environment=PORT=5003
-ExecStart=/home/ubuntu/Long_Term_crypto_trading_bot/crypto_venv/bin/gunicorn --bind 0.0.0.0:5003 --workers 4 --worker-class sync --timeout 120 wsgi:app
+ExecStart=/home/ubuntu/.local/bin/gunicorn --bind 0.0.0.0:5003 --workers 4 --worker-class sync --timeout 120 wsgi:app
 Restart=always
 RestartSec=5
 

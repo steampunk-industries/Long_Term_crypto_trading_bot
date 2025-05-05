@@ -731,3 +731,65 @@ class CoinbaseExchange(BaseExchange):
         }
         
         return timeframe_map.get(timeframe, 3600)
+        
+    def get_top_symbols(self, limit: int = 10, quote: str = "USDT") -> List[str]:
+        """
+        Get the top trading pairs by volume for Coinbase exchange.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency (e.g., "USDT")
+            
+        Returns:
+            List of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"])
+        """
+        url = "https://api.exchange.coinbase.com/products"
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            products = response.json()
+            
+            # Filter for the specified quote currency
+            # Coinbase primarily uses USD, so we may need to fallback
+            target_quote = quote
+            filtered_pairs = [
+                p['id'] for p in products
+                if p.get('quote_currency') == target_quote and p.get('status') == 'online'
+            ]
+            
+            # If no pairs found with specified quote, try USD as fallback if quote was USDT
+            if not filtered_pairs and quote == "USDT":
+                target_quote = "USD"
+                filtered_pairs = [
+                    p['id'] for p in products
+                    if p.get('quote_currency') == target_quote and p.get('status') == 'online'
+                ]
+            
+            # Get 24h stats for volume sorting
+            pairs_with_volume = []
+            for product_id in filtered_pairs[:min(25, len(filtered_pairs))]:  # Limit API calls
+                try:
+                    stats_url = f"{self.base_url}/products/{product_id}/stats"
+                    stats_response = requests.get(stats_url, timeout=3)
+                    stats_response.raise_for_status()
+                    stats = stats_response.json()
+                    volume = float(stats.get('volume', 0))
+                    pairs_with_volume.append((product_id, volume))
+                except Exception as e:
+                    logger.debug(f"Could not get stats for {product_id}: {e}")
+            
+            # Sort by volume
+            sorted_pairs = sorted(pairs_with_volume, key=lambda x: x[1], reverse=True)
+            
+            # Convert to standard format (e.g., "BTC-USD" to "BTC/USD")
+            formatted_pairs = [p[0].replace("-", "/") for p in sorted_pairs[:limit]]
+            
+            logger.info(f"Retrieved {len(formatted_pairs)} top symbols from Coinbase with quote {target_quote}")
+            return formatted_pairs
+        except Exception as e:
+            logger.warning(f"Failed to fetch Coinbase top symbols: {e}")
+            # Return default pairs based on the requested quote currency
+            if quote == "USDT":
+                return ["BTC/USDT", "ETH/USDT"]
+            else:
+                return [f"BTC/{quote}", f"ETH/{quote}"]

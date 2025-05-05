@@ -12,6 +12,7 @@ import uuid
 import requests
 from typing import Dict, List, Optional, Union, Any
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 import pandas as pd
 from loguru import logger
 
@@ -29,7 +30,8 @@ class SteampunkHoldingsAPI:
         self,
         api_key: str = "",
         api_secret: str = "",
-        base_url: str = "https://api.steampunk.holdings/v1"
+        base_url: str = "https://api.steampunk.holdings/v1",
+        timeout: int = 30
     ):
         """
         Initialize the Steampunk Holdings API client.
@@ -38,10 +40,36 @@ class SteampunkHoldingsAPI:
             api_key: API key for steampunk.holdings
             api_secret: API secret for steampunk.holdings
             base_url: Base URL for the API
+            timeout: Request timeout in seconds
         """
         self.api_key = api_key or os.environ.get("STEAMPUNK_API_KEY", "")
         self.api_secret = api_secret or os.environ.get("STEAMPUNK_API_SECRET", "")
-        self.base_url = base_url
+        self.timeout = timeout
+        
+        # Use direct IP if configured
+        if os.environ.get("STEAMPUNK_IP_ADDRESS"):
+            # Parse the URL to maintain the path but replace the hostname
+            parsed_url = urlparse(base_url)
+            ip_address = os.environ.get("STEAMPUNK_IP_ADDRESS")
+            
+            # Include port if specified in environment
+            if os.environ.get("STEAMPUNK_PORT"):
+                ip_address = f"{ip_address}:{os.environ.get('STEAMPUNK_PORT')}"
+                
+            # Reconstruct URL with IP instead of domain
+            new_netloc = ip_address
+            self.base_url = urlunparse((
+                parsed_url.scheme,
+                new_netloc,
+                parsed_url.path,
+                parsed_url.params,
+                parsed_url.query,
+                parsed_url.fragment
+            ))
+            logger.info(f"Using direct IP for Steampunk Holdings API: {self.base_url}")
+        else:
+            self.base_url = base_url
+            
         self.session = requests.Session()
         
         # Add common headers
@@ -128,13 +156,24 @@ class SteampunkHoldingsAPI:
         
         for attempt in range(max_retries):
             try:
+                # Determine if we should verify SSL
+                # Disable SSL verification when connecting directly to an IP address
+                # to avoid certificate hostname verification errors
+                verify_ssl = True
+                if self.base_url and ('STEAMPUNK_IP_ADDRESS' in os.environ):
+                    # If connecting to IP directly, disable SSL verification
+                    verify_ssl = False
+                    if attempt == 0:  # Log only on first attempt
+                        logger.warning("SSL verification disabled for direct IP connection to Steampunk Holdings API")
+                
                 response = self.session.request(
                     method=method,
                     url=url,
                     params=params,
                     json=data,
                     headers=headers,
-                    timeout=30
+                    timeout=30,
+                    verify=verify_ssl
                 )
                 
                 # Check for errors

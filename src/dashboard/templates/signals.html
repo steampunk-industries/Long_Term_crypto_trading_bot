@@ -5,7 +5,7 @@
 
 <!-- Signal Stats -->
 <div class="row">
-    <div class="col-md-3 mb-4">
+    <div class="col-md-2 mb-4">
         <div class="card h-100 border-primary">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Total Signals</h5>
@@ -16,7 +16,7 @@
         </div>
     </div>
     
-    <div class="col-md-3 mb-4">
+    <div class="col-md-2 mb-4">
         <div class="card h-100 border-success">
             <div class="card-header bg-success text-white">
                 <h5 class="mb-0"><i class="fas fa-arrow-up me-2"></i>Buy Signals</h5>
@@ -27,7 +27,7 @@
         </div>
     </div>
     
-    <div class="col-md-3 mb-4">
+    <div class="col-md-2 mb-4">
         <div class="card h-100 border-danger">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0"><i class="fas fa-arrow-down me-2"></i>Sell Signals</h5>
@@ -38,7 +38,18 @@
         </div>
     </div>
     
-    <div class="col-md-3 mb-4">
+    <div class="col-md-2 mb-4">
+        <div class="card h-100 border-warning">
+            <div class="card-header bg-warning text-white">
+                <h5 class="mb-0"><i class="fas fa-hand-paper me-2"></i>Hold Signals</h5>
+            </div>
+            <div class="card-body text-center">
+                <h2 class="display-5">{{ signal_stats.hold }}</h2>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-4">
         <div class="card h-100 border-info">
             <div class="card-header bg-info text-white">
                 <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Execution Rate</h5>
@@ -46,6 +57,39 @@
             <div class="card-body text-center">
                 <h2 class="display-5">{{ "%.1f"|format(signal_stats.execution_rate) }}%</h2>
                 <p class="mb-0">{{ signal_stats.executed }} executed</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Signal Controls -->
+<div class="card mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Signal Filters</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="signalType">Signal Type</label>
+                    <div class="btn-group d-flex" role="group" id="signalTypeFilter">
+                        <button type="button" class="btn btn-outline-primary active" data-filter="all">All</button>
+                        <button type="button" class="btn btn-outline-success" data-filter="buy">Buy</button>
+                        <button type="button" class="btn btn-outline-danger" data-filter="sell">Sell</button>
+                        <button type="button" class="btn btn-outline-warning" data-filter="hold">Hold</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="strategyFilter">Strategy</label>
+                    <select class="form-control" id="strategyFilter">
+                        <option value="all">All Strategies</option>
+                        {% for strategy_name in strategies %}
+                            <option value="{{ strategy_name }}">{{ strategy_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -59,7 +103,7 @@
     <div class="card-body">
         {% if signals %}
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
+            <table class="table table-striped table-hover" id="signalsTable">
                 <thead>
                     <tr>
                         <th>Timestamp</th>
@@ -73,7 +117,7 @@
                 </thead>
                 <tbody>
                     {% for signal in signals %}
-                    <tr>
+                    <tr class="signal-row" data-signal-type="{{ signal.signal_type }}" data-strategy="{{ signal.strategy }}">
                         <td>{{ signal.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>{{ signal.symbol }}</td>
                         <td>{{ signal.strategy }}</td>
@@ -188,4 +232,8 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/signals.js') }}"></script>
 {% endblock %}

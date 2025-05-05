@@ -14,6 +14,8 @@ import os
 from src.database.models import Trade, Balance, PortfolioSnapshot, SignalLog, get_session
 from src.config import config
 from src.exchanges.exchange_factory import ExchangeFactory
+from src.utils.symbol_ranker import SymbolRanker
+from src.multi_currency_bot import MultiCurrencyBot
 
 # Create blueprint
 dashboard = Blueprint('dashboard', __name__)
@@ -353,10 +355,34 @@ def signals():
 
         try:
             # Get all signals
-            signals = session.query(SignalLog).order_by(
+            raw_signals = session.query(SignalLog).order_by(
                 SignalLog.timestamp.desc()
             ).limit(100).all()
 
+            # Filter out duplicate hold signals that correspond to buy signals
+            signals = []
+            signal_map = {}
+            
+            # First pass: group signals by symbol+strategy+date
+            for signal in raw_signals:
+                key = f"{signal.symbol}_{signal.strategy}_{signal.timestamp.strftime('%Y-%m-%d')}"
+                if key not in signal_map:
+                    signal_map[key] = []
+                signal_map[key].append(signal)
+            
+            # Second pass: process each group
+            for key, signal_group in signal_map.items():
+                signal_types = [s.signal_type for s in signal_group]
+                
+                # If we have both buy and hold in the same group, only keep the buy
+                if 'buy' in signal_types and 'hold' in signal_types:
+                    for s in signal_group:
+                        if s.signal_type == 'buy':
+                            signals.append(s)
+                else:
+                    # Keep all signals if there's no buy + hold combination
+                    signals.extend(signal_group)
+            
             # Group signals by strategy
             strategies = {}
             for signal in signals:
@@ -368,12 +394,14 @@ def signals():
             total_signals = len(signals)
             buy_signals = sum(1 for s in signals if s.signal_type == 'buy')
             sell_signals = sum(1 for s in signals if s.signal_type == 'sell')
+            hold_signals = sum(1 for s in signals if s.signal_type == 'hold')
             executed_signals = sum(1 for s in signals if s.executed)
             
             signal_stats = {
                 'total': total_signals,
                 'buy': buy_signals,
                 'sell': sell_signals,
+                'hold': hold_signals,
                 'executed': executed_signals,
                 'execution_rate': (executed_signals / total_signals * 100) if total_signals > 0 else 0
             }
@@ -657,6 +685,319 @@ def api_signals():
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"Error in api_signals route: {e}\n{error_details}")
+        return jsonify({'error': str(e)}), 500
+
+@dashboard.route('/multi-currency')
+@login_required
+def multi_currency():
+    """
+    Multi-currency trading dashboard showing trading opportunities across different currencies.
+    """
+    try:
+        # Ensure database tables exist
+        ensure_tables_exist()
+        
+        # Initialize bot status
+        bot_status = {
+            'active': False,
+            'max_positions': 3,
+            'quote_currency': 'USDT',
+            'min_confidence': 0.4,
+            'strategy': 'rsi_strategy'
+        }
+        
+        # Initialize empty lists
+        opportunities = []
+        active_positions = []
+        exchange_prices = {}
+        
+        # Try to use a multi-exchange first
+        try:
+            # Create a multi-exchange instance to aggregate data from multiple exchanges
+            multi_exchange = ExchangeFactory.create_exchange('multi', paper_trading=True)
+            
+            if multi_exchange and multi_exchange.connect():
+                # Create a symbol ranker to find opportunities
+                ranker = SymbolRanker(
+                    exchange=multi_exchange,
+                    strategy_name="rsi_strategy",
+                    timeframe="1h",
+                    risk_level="medium"
+                )
+                
+                # Get top symbols
+                symbols = multi_exchange.get_top_symbols(limit=10, quote='USDT')
+                
+                # Rank symbols by confidence
+                ranked_symbols = ranker.rank_symbols(symbols)
+                
+                # Format opportunities for the template
+                for symbol, signal, confidence, metadata in ranked_symbols:
+                    # Try to get current price
+                    price = 0
+                    price_change = 0
+                    
+                    try:
+                        ticker = multi_exchange.get_ticker(symbol)
+                        price = ticker.get('last', 0)
+                        price_change = ticker.get('change_24h', 0)
+                    except Exception as e:
+                        logger.debug(f"Error getting ticker for {symbol}: {e}")
+                    
+                    opportunities.append({
+                        'symbol': symbol,
+                        'exchange': 'Multiple',
+                        'signal_type': signal,
+                        'confidence': confidence,
+                        'price': price,
+                        'price_change': price_change,
+                        'timestamp': datetime.now()
+                    })
+                
+                # Get prices from multiple exchanges for comparison
+                for symbol in set([op['symbol'] for op in opportunities]):
+                    symbol_prices = {}
+                    exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'gemini']
+                    
+                    for exchange_name in exchanges:
+                        try:
+                            exchange = ExchangeFactory.create_exchange(exchange_name, paper_trading=True)
+                            if exchange and exchange.connect():
+                                ticker = exchange.get_ticker(symbol)
+                                if ticker and 'last' in ticker and ticker['last'] > 0:
+                                    symbol_prices[exchange_name] = {
+                                        'price': ticker['last'],
+                                        'volume': ticker.get('volume', 0),
+                                        'change': ticker.get('change_24h', 0)
+                                    }
+                        except Exception as e:
+                            logger.debug(f"Error getting {symbol} price from {exchange_name}: {e}")
+                    
+                    if symbol_prices:
+                        exchange_prices[symbol] = symbol_prices
+                
+                # Try to get current positions
+                try:
+                    # Check for open orders first
+                    open_orders = multi_exchange.get_open_orders()
+                    
+                    # Then check balances for active positions
+                    balances = {}
+                    for currency in ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'USDT']:
+                        balance = multi_exchange.get_balance(currency)
+                        if balance > 0:
+                            balances[currency] = balance
+                    
+                    for currency, balance in balances.items():
+                        if currency != 'USDT' and currency != 'USD' and balance > 0:
+                            # Try to get currency price
+                            symbol = f"{currency}/USDT"
+                            try:
+                                ticker = multi_exchange.get_ticker(symbol)
+                                price = ticker.get('last', 0)
+                                
+                                # Add to active positions
+                                if price > 0:
+                                    active_positions.append({
+                                        'symbol': symbol,
+                                        'exchange': 'Multiple',
+                                        'entry_price': price,  # Estimated since we don't know actual entry
+                                        'current_price': price,
+                                        'quantity': balance,
+                                        'value': balance * price,
+                                        'entry_time': datetime.now() - timedelta(days=1)  # Placeholder
+                                    })
+                            except Exception as e:
+                                logger.debug(f"Error getting ticker for {symbol}: {e}")
+                except Exception as e:
+                    logger.error(f"Error getting positions: {e}")
+        except Exception as e:
+            logger.error(f"Error initializing multi-exchange: {e}")
+            
+            # Fall back to single exchange if multi-exchange fails
+            exchange_name = config.TRADING_EXCHANGE
+            if not exchange_name:
+                exchange_name = "kucoin"  # Default
+                
+            try:
+                exchange = ExchangeFactory.create_exchange_from_config(exchange_name)
+                
+                if exchange and exchange.connect():
+                    # Get trading opportunities using the single exchange
+                    ranker = SymbolRanker(
+                        exchange=exchange,
+                        strategy_name="rsi_strategy",
+                        timeframe="1h",
+                        risk_level="medium"
+                    )
+                    
+                    symbols = ranker.get_top_symbols(limit=10, quote='USDT')
+                    ranked_symbols = ranker.rank_symbols(symbols)
+                    
+                    for symbol, signal, confidence, metadata in ranked_symbols:
+                        try:
+                            ticker = exchange.get_ticker(symbol)
+                            price = ticker.get('last', 0)
+                            price_change = ticker.get('change_24h', 0)
+                            
+                            opportunities.append({
+                                'symbol': symbol,
+                                'exchange': exchange_name,
+                                'signal_type': signal,
+                                'confidence': confidence,
+                                'price': price,
+                                'price_change': price_change,
+                                'timestamp': datetime.now()
+                            })
+                        except Exception as e:
+                            logger.debug(f"Error getting ticker for {symbol}: {e}")
+                    
+                    # Get positions from single exchange
+                    try:
+                        balances = exchange.get_balances()
+                        
+                        for currency, balance in balances.items():
+                            if currency != 'USDT' and currency != 'USD' and balance > 0:
+                                symbol = f"{currency}/USDT"
+                                try:
+                                    ticker = exchange.get_ticker(symbol)
+                                    price = ticker.get('last', 0)
+                                    
+                                    if price > 0:
+                                        active_positions.append({
+                                            'symbol': symbol,
+                                            'exchange': exchange_name,
+                                            'entry_price': price,
+                                            'current_price': price,
+                                            'quantity': balance,
+                                            'value': balance * price,
+                                            'entry_time': datetime.now() - timedelta(days=1)
+                                        })
+                                except Exception as e:
+                                    logger.debug(f"Error getting ticker for {symbol}: {e}")
+                    except Exception as e:
+                        logger.error(f"Error getting positions: {e}")
+            except Exception as e:
+                logger.error(f"Error initializing single exchange: {e}")
+                flash(f"Error connecting to exchange: {str(e)}", "danger")
+        
+        # Check if there's a multi-currency bot running
+        bot_pid_file = ".bot_pid"
+        if os.path.exists(bot_pid_file):
+            try:
+                with open(bot_pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                    
+                # Check if process is running
+                try:
+                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                    bot_status['active'] = True
+                except OSError:
+                    # Process doesn't exist
+                    pass
+            except Exception as e:
+                logger.error(f"Error checking bot status: {e}")
+
+        return render_template(
+            'multi_currency.html',
+            title='Multi-Currency Trading',
+            bot_status=bot_status,
+            opportunities=opportunities,
+            active_positions=active_positions,
+            exchange_prices=exchange_prices
+        )
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"Error in multi-currency route: {e}\n{error_details}")
+        return render_template(
+            'errors/500.html', 
+            error=f"Multi-currency error: {str(e)}", 
+            details="Check server logs for more information."
+        ), 500
+
+@dashboard.route('/exchange-comparison')
+@login_required
+def exchange_comparison():
+    """
+    View to compare prices across exchanges
+    """
+    try:
+        # Default symbols to compare
+        default_symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'BNB/USDT']
+        
+        return render_template(
+            'exchange_comparison.html',
+            title='Exchange Price Comparison',
+            symbols=default_symbols
+        )
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"Error in exchange comparison route: {e}\n{error_details}")
+        return render_template(
+            'errors/500.html', 
+            error=f"Exchange comparison error: {str(e)}", 
+            details="Check server logs for more information."
+        ), 500
+
+# Define the route with explicit HTTP methods
+@dashboard.route('/api/price-comparison/<symbol>', methods=['GET'])
+def api_price_comparison(symbol):
+    """API endpoint to get price comparison across exchanges"""
+    try:
+        # Default to BTC/USDT if no symbol provided
+        symbol = symbol.upper() if symbol else 'BTC/USDT'
+        
+        # Handle both slash and hyphen formats
+        if '-' in symbol:
+            symbol = symbol.replace('-', '/')
+        
+        # List of exchanges to compare
+        exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'gemini']
+        prices = {}
+        
+        # Fetch prices from each exchange
+        for exchange_name in exchanges:
+            try:
+                exchange = ExchangeFactory.create_exchange(exchange_name, paper_trading=True)
+                if exchange and exchange.connect():
+                    # Get ticker data for the symbol
+                    ticker = exchange.get_ticker(symbol)
+                    if ticker and 'last' in ticker:
+                        prices[exchange_name] = {
+                            'last': ticker.get('last', 0),
+                            'bid': ticker.get('bid', 0),
+                            'ask': ticker.get('ask', 0),
+                            'volume': ticker.get('volume', 0),
+                            'change_24h': ticker.get('change_24h', 0),
+                            'timestamp': datetime.now().isoformat()
+                        }
+            except Exception as ex:
+                logger.error(f"Error getting {symbol} price from {exchange_name}: {ex}")
+        
+        # Find best prices (lowest ask, highest bid)
+        if prices:
+            ask_prices = [(ex_data.get('ask', float('inf')), ex_name) 
+                         for ex_name, ex_data in prices.items() 
+                         if ex_data.get('ask', 0) > 0]
+            
+            bid_prices = [(ex_data.get('bid', 0), ex_name) 
+                         for ex_name, ex_data in prices.items() 
+                         if ex_data.get('bid', 0) > 0]
+            
+            if ask_prices:
+                best_ask = min(ask_prices)
+                for ex_name in prices:
+                    prices[ex_name]['is_best_ask'] = (ex_name == best_ask[1])
+            
+            if bid_prices:
+                best_bid = max(bid_prices)
+                for ex_name in prices:
+                    prices[ex_name]['is_best_bid'] = (ex_name == best_bid[1])
+        
+        return jsonify(prices)
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"Error in price comparison API: {e}\n{error_details}")
         return jsonify({'error': str(e)}), 500
 
 @dashboard.route('/health', methods=['GET'])

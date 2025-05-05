@@ -121,11 +121,15 @@ chmod +x test_exchange_connection.py
 echo -e "${YELLOW}Running exchange connection test...${NC}"
 python3 test_exchange_connection.py
 
-# Attempt to start the trading bot in paper trading mode
-echo -e "${YELLOW}Starting trading bot in paper trading mode...${NC}"
-nohup python3 run_bot.py --bot-only --interval 5 &> logs/trading_bot.log &
+# Attempt to start the multi-currency trading bot with multi-exchange in paper trading mode
+echo -e "${YELLOW}Starting multi-currency trading bot in paper trading mode...${NC}"
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Run the multi-currency bot
+nohup python3 run_multi_currency_bot.py --exchange multi --paper --interval 5 --max-positions 3 --min-confidence 0.4 &> logs/multi_currency_bot.log &
 BOT_PID=$!
-echo -e "${GREEN}Trading bot started with PID: ${BOT_PID}${NC}"
+echo -e "${GREEN}Multi-currency trading bot started with PID: ${BOT_PID}${NC}"
 echo $BOT_PID > .bot_pid
 
 # Display access information

@@ -738,3 +738,42 @@ class KucoinExchange(BaseExchange):
         }
         
         return timeframe_map.get(timeframe, "1hour")
+        
+    def get_top_symbols(self, limit: int = 10, quote: str = "USDT") -> List[str]:
+        """
+        Get the top trading pairs by volume for KuCoin exchange.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency (e.g., "USDT")
+            
+        Returns:
+            List of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"])
+        """
+        url = "https://api.kucoin.com/api/v1/market/allTickers"
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            tickers = data.get('data', {}).get('ticker', [])
+            
+            # Filter for the specified quote currency
+            quote_suffix = f"-{quote}"
+            filtered_pairs = [
+                t['symbolName'] for t in tickers
+                if t['symbolName'].endswith(quote_suffix) and float(t.get('volValue', 0)) > 1_000_000
+            ]
+            
+            # Sort by volume
+            sorted_pairs = sorted(filtered_pairs, 
+                                key=lambda s: float(next((t.get('volValue', 0) for t in tickers if t['symbolName'] == s), 0)), 
+                                reverse=True)
+            
+            # Convert to standard format (e.g., "BTC-USDT" to "BTC/USDT")
+            formatted_pairs = [s.replace("-", "/") for s in sorted_pairs[:limit]]
+            
+            logger.info(f"Retrieved {len(formatted_pairs)} top symbols from KuCoin")
+            return formatted_pairs
+        except Exception as e:
+            logger.warning(f"Failed to fetch KuCoin top symbols: {e}")
+            return [f"BTC/{quote}", f"ETH/{quote}"]

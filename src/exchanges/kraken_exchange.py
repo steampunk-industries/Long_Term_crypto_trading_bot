@@ -579,3 +579,100 @@ class KrakenExchange(BaseExchange):
         logger.info(f"Executed paper trade: {trade}")
         
         return order
+        
+    def get_top_symbols(self, limit: int = 10, quote: str = "USDT") -> List[str]:
+        """
+        Get the top trading pairs by volume for Kraken exchange.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            quote: Quote currency (e.g., "USDT")
+            
+        Returns:
+            List of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"])
+        """
+        try:
+            # Kraken uses different symbol format for some assets (e.g., XBT for BTC)
+            kraken_quote = "USD" if quote == "USD" else quote
+            
+            # Try to get markets from CCXT
+            markets = self.exchange.fetch_markets()
+            
+            # Filter for the specified quote currency
+            filtered_markets = [
+                market for market in markets
+                if market['quote'] == kraken_quote and market['active']
+            ]
+            
+            # Fetch tickers to get volume data (in a single API call)
+            tickers = self.exchange.fetch_tickers([market['symbol'] for market in filtered_markets])
+            
+            # Add volume data to markets
+            for market in filtered_markets:
+                ticker = tickers.get(market['symbol'], {})
+                market['volume'] = ticker.get('baseVolume', 0)
+            
+            # Sort by volume
+            sorted_markets = sorted(filtered_markets, key=lambda m: m.get('volume', 0), reverse=True)
+            
+            # Map to standard format and return top N
+            result = []
+            for market in sorted_markets[:limit]:
+                # Map symbol to standard format
+                standard_symbol = self._map_symbol_reverse(market['symbol'])
+                result.append(standard_symbol)
+            
+            logger.info(f"Retrieved {len(result)} top symbols from Kraken with quote {quote}")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to fetch Kraken top symbols via CCXT: {e}")
+            
+            # Fallback: Direct API call
+            try:
+                url = "https://api.kraken.com/0/public/AssetPairs"
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+                data = response.json().get("result", {})
+                
+                # Filter for the specified quote currency
+                target_quote = "ZUSD" if quote == "USD" else quote
+                filtered_pairs = [
+                    k for k, v in data.items()
+                    if v.get("quote") == target_quote and v.get("wsname")
+                ]
+                
+                # Get ticker data for volume
+                ticker_url = "https://api.kraken.com/0/public/Ticker"
+                params = {"pair": ",".join(filtered_pairs[:25])}  # Limit to 25 pairs
+                ticker_response = requests.get(ticker_url, params=params, timeout=5)
+                ticker_response.raise_for_status()
+                ticker_data = ticker_response.json().get("result", {})
+                
+                # Combine data with volume info
+                pairs_with_volume = []
+                for pair in filtered_pairs:
+                    if pair in ticker_data:
+                        volume = float(ticker_data[pair].get("v", [0, 0])[1])  # 24h volume
+                        wsname = data[pair].get("wsname", pair)
+                        # wsname format is typically "XBT/USD"
+                        standard_symbol = wsname.replace("XBT", "BTC")
+                        pairs_with_volume.append((standard_symbol, volume))
+                
+                # Sort by volume and get top N
+                sorted_pairs = sorted(pairs_with_volume, key=lambda x: x[1], reverse=True)
+                result = [pair[0] for pair in sorted_pairs[:limit]]
+                
+                logger.info(f"Retrieved {len(result)} top symbols from Kraken API with quote {quote}")
+                return result
+                
+            except Exception as e:
+                logger.warning(f"Failed to fetch Kraken top symbols via direct API: {e}")
+                
+                # Return default pairs
+                if quote == "USDT":
+                    return ["BTC/USDT", "ETH/USDT"]
+                elif quote == "USD":
+                    return ["BTC/USD", "ETH/USD"]
+                else:
+                    return [f"BTC/{quote}", f"ETH/{quote}"]
