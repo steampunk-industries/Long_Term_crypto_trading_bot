@@ -7,11 +7,11 @@
       200,
       204
     ],
-    "last_check": 1746488107.6872356,
+    "last_check": 1746488527.9914904,
     "status": "down",
-    "since": "2025-05-05T23:32:19.799490",
-    "failure_count": 1773,
+    "since": "2025-05-05T23:37:23.430905",
+    "failure_count": 1781,
     "uptime_seconds": 0,
-    "last_error": "HTTPSConnectionPool(host='api.steampunk.holdings', port=443): Max retries exceeded with url: /v1/health (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x712044394a60>: Failed to resolve 'api.steampunk.holdings' ([Errno -2] Name or service not known)\"))"
+    "last_error": "HTTPSConnectionPool(host='api.steampunk.holdings', port=443): Max retries exceeded with url: /v1/health (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x712044334880>: Failed to resolve 'api.steampunk.holdings' ([Errno -2] Name or service not known)\"))"
   }
 }
