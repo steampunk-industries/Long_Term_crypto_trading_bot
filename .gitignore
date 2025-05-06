@@ -49,3 +49,4 @@ credentials.json
 # OS
 .DS_Store
 Thumbs.db
+aws_venv/
