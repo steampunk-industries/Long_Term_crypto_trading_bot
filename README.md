@@ -1,139 +1,134 @@
-# Long-Term Crypto Trading Bot
+# Long\_Term\_crypto\_trading\_bot
 
-A sophisticated cryptocurrency trading bot designed for long-term trading strategies with paper trading support for multiple exchanges.
+**Multi-Currency AI-Augmented Paper & Live Trading Bot**
+Supports: KuCoin, Coinbase, Kraken, Gemini, and Steampunk Holdings (API).
 
-## Features
+---
 
-- **Multi-Exchange Support**: Connect to Binance, Coinbase, and KuCoin through their public APIs
-- **Paper Trading**: Test strategies without risking real money
-- **Multiple Trading Strategies**:
-  - Moving Average Crossover
-  - RSI (Relative Strength Index)
-  - Easily extendable for custom strategies
-- **Portfolio Management**: Track performance, calculate metrics, and manage risk
-- **Web Dashboard**: Monitor performance, trades, and signals through an intuitive web interface
-- **Database Storage**: Store trades, signals, and portfolio snapshots for analysis
-- **Configurable Risk Levels**: Adjust risk parameters based on your preferences
+## 📦 Features
 
-## Installation
+* **Modular Multi-Exchange Support**
 
-### Prerequisites
+  * Plug-and-play integrations for major exchanges
+* **Advanced Strategy Layer**
 
-- Python 3.8+
-- PostgreSQL (optional, SQLite is used by default)
+  * RSI-based with market sentiment & symbol ranking
+* **Steampunk Holdings Support**
 
-### Setup
+  * Custom API integration with fallback IP
+* **Paper + Real Trading Modes**
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/Long_Term_crypto_trading_bot.git
-   cd Long_Term_crypto_trading_bot
-   ```
+  * Fully simulated environments with live market data
+* **Web Dashboard (Flask + Gunicorn)**
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+  * Real-time metrics, health checks, visual indicators
+* **TensorFlow Ready**
 
-3. Configure your environment variables in the `.env` file:
-   ```
-   # Exchange API Keys (Replace with your own keys)
-   BINANCE_API_KEY=your_binance_api_key
-   BINANCE_API_SECRET=your_binance_api_secret
-   # ... other configuration options
-   ```
+  * Integrated for ML-based forecasting (optional)
 
-## Usage
+---
 
-The bot can be run in different modes:
+## 🧱 Project Structure
 
-### Trading Bot Only
+```
+Long_Term_crypto_trading_bot/
+├── configs/                    # Static config files (.env, .ini)
+├── docker/                     # Dockerfiles and compose YAMLs
+├── docs/                       # Markdown documentation
+├── scripts/                    # Setup and utility scripts
+├── services/                   # .service files for systemd integration
+├── src/                        # Core trading bot application
+│   ├── exchanges/              # Exchange wrappers (KuCoin, Kraken...)
+│   ├── integrations/           # External APIs (Steampunk, Sentiment)
+│   ├── strategies/             # Strategy logic
+│   ├── utils/                  # Helpers: ranking, data loading, etc
+│   ├── database/               # SQLAlchemy models, sessions
+├── tests/                      # Test scripts and coverage
+├── requirements.txt            # Pinned runtime dependencies
+└── README.md                   # You are here
+```
+
+---
+
+## 🚀 Quickstart
+
+### 1. 🧪 Set up environment
 
 ```bash
-python -m src.main bot --interval 60
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-This will run the trading bot with a 60-minute interval between runs.
+### 2. 🔐 Configure API Keys
 
-### Dashboard Only
+Copy `.env.example` to `.env` and fill in exchange keys.
+
+### 3. 🛠️ Run in paper trading mode
 
 ```bash
-python -m src.main dashboard
+./run_multi_currency_bot.py --exchange kucoin --paper --dry-run --once --max-positions 3
 ```
 
-This will start the web dashboard on the configured host and port (default: http://0.0.0.0:5000).
-
-### Both Trading Bot and Dashboard
+### 4. 🌐 Start the dashboard
 
 ```bash
-python -m src.main both --interval 60
+./scripts/run_dashboard.sh
 ```
 
-This will run both the trading bot and the dashboard simultaneously.
+Then visit: [http://localhost:8000](http://localhost:8000)
 
-### Run Once
+---
+
+## 🧠 Strategy Overview
+
+* **RSI Signal Generation**
+* **Symbol Ranking**: weighted by volatility, volume, and sentiment
+* **Position Sizing**: capital-preserving max allocation
+* **Steampunk Holdings Override**: API pricing fallback or strategy influence
+
+---
+
+## 🐳 Docker Support
+
+Build the full app + dashboard via Compose:
 
 ```bash
-python -m src.main bot --once
+docker-compose -f docker/docker-compose.cpu.yml up --build
 ```
 
-This will run the trading bot once and then exit.
+---
 
-## Dashboard
+## 🧼 Maintenance
 
-The web dashboard provides a comprehensive view of your trading bot's performance:
+To audit for dead code or unused scripts:
 
-- **Login**: Access the dashboard with your configured username and password
-- **Overview**: See portfolio value, PnL, drawdown, and trading mode
-- **Portfolio**: View portfolio performance charts and balance distribution
-- **Trades**: Analyze executed trades and statistics
-- **Signals**: Review trading signals generated by strategies
-- **Settings**: Configure bot parameters
-
-## Adding Custom Strategies
-
-To add a custom strategy:
-
-1. Create a new file in the `src/strategies` directory
-2. Implement a class that inherits from `BaseStrategy`
-3. Override the `generate_signals` method
-4. Add your strategy to the `StrategyFactory` class
-
-Example:
-
-```python
-from src.strategies.base_strategy import BaseStrategy
-
-class MyCustomStrategy(BaseStrategy):
-    def generate_signals(self, data):
-        # Implement your strategy logic here
-        return signal_type, confidence, metadata
+```bash
+./scripts/audit_repo_usage.sh   # Prints audit report
+./scripts/final_cleanup.sh      # Auto-deletes flagged files
 ```
 
-## Configuration
+---
 
-The bot is highly configurable through the `.env` file. Key configuration options include:
+## 📜 License
 
-- Exchange API keys
-- Trading parameters (symbol, initial capital)
-- Risk parameters (stop loss, leverage)
-- Database settings
-- Dashboard credentials
+MIT. Steampunk Holdings modules may be subject to private licensing.
 
-## Deployment
+---
 
-For production deployment:
+## 🧭 Roadmap
 
-1. Set up a proper database (PostgreSQL recommended)
-2. Configure secure API keys with restricted permissions
-3. Set up proper logging
-4. Consider using a process manager like Supervisor or PM2
-5. Set up SSL for the dashboard
+* [ ] Deploy AWS Lambda price fetcher
+* [ ] Add Discord webhook alerts
+* [ ] Integrate TensorFlow forecasting pipeline
+* [ ] Auto-detect high volatility symbols
 
-## License
+---
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 🤝 Contributions
 
-## Disclaimer
+PRs welcome. See `docs/CONTRIBUTING.md` (coming soon).
 
-This software is for educational purposes only. Use at your own risk. The authors are not responsible for any financial losses incurred from using this software.
+---
+
+> Project initiated by Steampunk Industries. Designed for scalable, modular long-term automated crypto trading.
